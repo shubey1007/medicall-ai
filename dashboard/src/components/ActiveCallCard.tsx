@@ -25,7 +25,10 @@ export default function ActiveCallCard({ call }: { call: ActiveCall }) {
         <div className="flex items-center gap-3">
           <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           <div className="text-left">
-            <div className="font-mono text-sm">{call.patientPhone}</div>
+            {call.patientName && (
+              <div className="font-medium text-sm text-slate-900">{call.patientName}</div>
+            )}
+            <div className="font-mono text-sm text-slate-600">{call.patientPhone}</div>
             <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
               <AgentStatusBadge agent={call.agent} />
               <span>{formatDuration(elapsed)}</span>

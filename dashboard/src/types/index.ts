@@ -80,6 +80,7 @@ export interface PaginatedResponse<T> {
 export interface ActiveCall {
   callSid: string;
   patientPhone: string;
+  patientName: string | null;
   agent: string;
   startedAt: string;
   transcript: TranscriptEntry[];
@@ -89,6 +90,7 @@ export interface ActiveCall {
 export interface CallStartedEvent {
   callSid: string;
   patientPhone: string;
+  patientName: string | null;
   agent: string;
   startedAt: string;
 }

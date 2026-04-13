@@ -11,10 +11,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.database import db_session
-from app.models import Call, CallStatus, TranscriptRole
+from app.models import Call, CallStatus, Patient, TranscriptRole
 from app.services.call_manager import CallSession, call_manager
 from app.services.notification_svc import send_post_call_sms
 from app.services.sheets_sync import push_call_summary
@@ -83,14 +84,22 @@ async def media_stream(websocket: WebSocket) -> None:
                     patient_phone=patient_phone,
                     patient_id=patient_id,
                     twilio_ws=websocket,
+                    patient_name=None,  # populated after DB load below
                 )
                 call_manager.register(session)
 
                 async with db_session() as db:
-                    result = await db.execute(select(Call).where(Call.id == db_call_id))
+                    result = await db.execute(
+                        select(Call)
+                        .options(selectinload(Call.patient))
+                        .where(Call.id == db_call_id)
+                    )
                     call = result.scalar_one()
                     call.status = CallStatus.ACTIVE
+                    patient_name: str | None = call.patient.name if call.patient else None
                     await db.commit()
+
+                session.patient_name = patient_name
 
                 # Lazy imports so app startup doesn't depend on Phase 4 router/agents.
                 from app.agents.router import agent_router  # Phase 4
@@ -175,6 +184,7 @@ async def media_stream(websocket: WebSocket) -> None:
                 await dashboard_ws.emit_call_started({
                     "callSid": call_sid,
                     "patientPhone": mask_phone(patient_phone),
+                    "patientName": patient_name,
                     "agent": "triage",
                     "startedAt": session.started_at.isoformat(),
                 })

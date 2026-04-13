@@ -24,10 +24,11 @@ const callSlice = createSlice({
   initialState,
   reducers: {
     callStarted(state, action: PayloadAction<CallStartedEvent>) {
-      const { callSid, patientPhone, agent, startedAt } = action.payload;
+      const { callSid, patientPhone, patientName, agent, startedAt } = action.payload;
       state.activeCalls[callSid] = {
         callSid,
         patientPhone,
+        patientName: patientName ?? null,
         agent,
         startedAt,
         transcript: [],
