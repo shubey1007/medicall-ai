@@ -38,9 +38,6 @@ class BaseAgent(ABC):
             return arguments.get("agent_name")
         return None
 
-    def should_end_call(self, tool_name: str) -> bool:
-        return tool_name == "end_call"
-
 
 ROUTE_TO_AGENT_TOOL = {
     "type": "function",

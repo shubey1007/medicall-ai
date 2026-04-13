@@ -144,7 +144,7 @@ async def media_stream(websocket: WebSocket) -> None:
                     if result and result.get("action") == "end_call":
                         call_sid = active_session.call_sid
 
-                        async def _delayed_hangup() -> None:
+                        async def _delayed_hangup(_sid: str = call_sid) -> None:
                             await asyncio.sleep(6)
                             try:
                                 from twilio.rest import Client as TwilioClient
@@ -154,14 +154,16 @@ async def media_stream(websocket: WebSocket) -> None:
                                     TwilioClient(
                                         _settings.twilio_account_sid,
                                         _settings.twilio_auth_token,
-                                    ).calls(call_sid).update(status="completed")
+                                    ).calls(_sid).update(status="completed")
 
                                 await asyncio.to_thread(_hang)
-                                logger.info("call_hung_up_by_agent", call_sid=call_sid)
+                                logger.info("call_hung_up_by_agent", call_sid=_sid)
                             except Exception as exc:
-                                logger.warning("hangup_failed", error=str(exc), call_sid=call_sid)
+                                logger.warning("hangup_failed", error=str(exc), call_sid=_sid)
 
-                        asyncio.create_task(_delayed_hangup())
+                        _task = asyncio.create_task(_delayed_hangup())
+                        _background_tasks.add(_task)
+                        _task.add_done_callback(_background_tasks.discard)
 
                     return result
 
