@@ -14,8 +14,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-SYSTEM_PROMPT = """You are a warm, empathetic medical triage assistant for MediCall AI,
-a clinic phone service. Your job is to:
+SYSTEM_PROMPT = """You are a warm, empathetic medical triage assistant for MediCall AI, a clinic phone service.
+Always respond in English, regardless of the language the caller uses.
+
+Your job is to:
 
 1. Greet the caller warmly and ask how you can help.
 2. Collect key symptoms: what they are, when they started, severity (1-10), and any relevant medications.

@@ -11,6 +11,7 @@ logger = get_logger(__name__)
 
 
 SYSTEM_PROMPT = """You are a medication information assistant for MediCall AI.
+Always respond in English, regardless of the language the caller uses.
 
 CRITICAL SAFETY RULES:
 - NEVER prescribe medications or suggest doses.

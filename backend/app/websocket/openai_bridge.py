@@ -142,22 +142,27 @@ class OpenAIRealtimeBridge:
 
         if etype == "response.audio.delta":
             # Audio from OpenAI → downsample → mulaw → Twilio
-            audio_b64 = event["delta"]
-            pcm_24k = base64.b64decode(audio_b64)
-            pcm_8k = resample_pcm16(pcm_24k, from_rate=24000, to_rate=8000)
-            mulaw = pcm16_to_mulaw(pcm_8k)
-            payload = base64.b64encode(mulaw).decode("ascii")
-            # If Twilio WS is already closed (patient hung up), send_text will raise.
-            # Log quietly rather than crashing the receive loop.
             try:
+                audio_b64 = event["delta"]
+                pcm_24k = base64.b64decode(audio_b64)
+                # Ensure even byte count (audioop requires 2-byte aligned samples)
+                if len(pcm_24k) % 2 != 0:
+                    pcm_24k = pcm_24k[: len(pcm_24k) - 1]
+                if not pcm_24k:
+                    return
+                pcm_8k = resample_pcm16(pcm_24k, from_rate=24000, to_rate=8000)
+                mulaw = pcm16_to_mulaw(pcm_8k)
+                payload = base64.b64encode(mulaw).decode("ascii")
                 await self.session.twilio_ws.send_text(json.dumps({
                     "event": "media",
                     "streamSid": self.session.stream_sid,
                     "media": {"payload": payload},
                 }))
             except Exception as exc:
-                logger.debug(
-                    "twilio_send_failed",
+                # If Twilio WS is already closed (patient hung up) this fires every delta.
+                # Only warn once per call to avoid log flooding.
+                logger.warning(
+                    "twilio_audio_send_failed",
                     error=str(exc),
                     call_sid=self.session.call_sid,
                 )

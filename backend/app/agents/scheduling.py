@@ -16,7 +16,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-SYSTEM_PROMPT = """You are a scheduling assistant for MediCall AI. You help patients:
+SYSTEM_PROMPT = """You are a scheduling assistant for MediCall AI.
+Always respond in English, regardless of the language the caller uses.
+
+You help patients:
 - Book new appointments with their doctor
 - Reschedule existing appointments
 - Cancel appointments
