@@ -7,7 +7,10 @@ audioop-lts provides the same API as the stdlib audioop module (removed in
 Python 3.13) and implements the ITU-T G.711 codec correctly.
 scipy.signal.resample_poly handles the 8 kHz <-> 24 kHz conversion.
 """
-import audioop
+try:
+    import audioop  # stdlib on Python < 3.13
+except ModuleNotFoundError:  # Python 3.13+ — audioop removed from stdlib
+    import audioop_lts as audioop  # type: ignore[no-redef]
 from math import gcd
 
 import numpy as np
