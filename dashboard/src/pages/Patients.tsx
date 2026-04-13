@@ -9,7 +9,7 @@ export default function Patients() {
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [calling, setCalling] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -20,14 +20,16 @@ export default function Patients() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  async function handleDelete(id: string, label: string) {
-    if (!window.confirm(`Delete patient ${label}? All associated calls will also be deleted.`)) return;
-    setDeleting(id);
+  async function handleCall(p: Patient) {
+    const label = p.name ?? p.phone;
+    if (!window.confirm(`Call ${label} at ${p.phone}?`)) return;
+    setCalling(p.id);
     try {
-      await api.delete(`/api/patients/${id}`);
-      setPatients((prev) => prev.filter((p) => p.id !== id));
+      await api.post("/api/calls/initiate", { to_phone: p.phone });
+    } catch {
+      // silent
     } finally {
-      setDeleting(null);
+      setCalling(null);
     }
   }
 
@@ -79,11 +81,11 @@ export default function Patients() {
                 <td className="px-4 py-3 text-sm text-slate-500">{formatDate(p.created_at)}</td>
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => handleDelete(p.id, p.name ?? p.phone)}
-                    disabled={deleting === p.id}
-                    className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                    onClick={() => handleCall(p)}
+                    disabled={calling === p.id}
+                    className="text-xs text-green-600 hover:text-green-800 font-medium disabled:opacity-50"
                   >
-                    {deleting === p.id ? "..." : "Delete"}
+                    {calling === p.id ? "Calling..." : "Call"}
                   </button>
                 </td>
               </tr>
