@@ -15,6 +15,7 @@ import uuid
 # Allow imports from backend/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app.services import qdrant_svc
 from app.services.qdrant_svc import embed, ensure_collections, get_client
 from qdrant_client.models import PointStruct
 
@@ -25,6 +26,9 @@ async def seed_medical_knowledge() -> None:
         entries = json.load(f)
 
     await ensure_collections()
+    if not qdrant_svc._qdrant_available:
+        print("ERROR: Qdrant is not available. Check QDRANT_URL and connectivity.", file=sys.stderr)
+        sys.exit(1)
     client = get_client()
 
     points = []
