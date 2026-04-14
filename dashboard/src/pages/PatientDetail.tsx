@@ -36,6 +36,14 @@ export default function PatientDetail() {
   const [editName, setEditName] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [calling, setCalling] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [doctorName, setDoctorName] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
@@ -60,6 +68,56 @@ export default function PatientDetail() {
       setEditing(false);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleCall() {
+    if (!patient) return;
+    const label = patient.name ?? patient.phone;
+    if (!window.confirm(`Call ${label} at ${patient.phone}?`)) return;
+    setCalling(true);
+    try {
+      await api.post("/api/calls/initiate", { to_phone: patient.phone });
+    } catch {
+      // silent
+    } finally {
+      setCalling(false);
+    }
+  }
+
+  function openScheduleModal() {
+    setDoctorName("");
+    setScheduledAt("");
+    setNotes("");
+    setScheduleError("");
+    setShowSchedule(true);
+  }
+
+  async function submitSchedule(e: React.FormEvent) {
+    e.preventDefault();
+    if (!patient) return;
+    if (!doctorName.trim() || !scheduledAt) {
+      setScheduleError("Doctor name and date/time are required.");
+      return;
+    }
+    setScheduling(true);
+    setScheduleError("");
+    try {
+      const res = await api.post<Appointment>("/api/appointments", {
+        patient_id: patient.id,
+        doctor_name: doctorName.trim(),
+        scheduled_at: new Date(scheduledAt).toISOString(),
+        notes: notes.trim() || null,
+      });
+      setAppointments((prev) => [res.data, ...prev]);
+      setShowSchedule(false);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        "Failed to schedule appointment.";
+      setScheduleError(msg);
+    } finally {
+      setScheduling(false);
     }
   }
 
@@ -114,9 +172,26 @@ export default function PatientDetail() {
               </div>
             </div>
           </div>
-          <div className="text-right text-xs text-slate-400">
-            <div>Patient since</div>
-            <div className="font-medium text-slate-600">{formatDate(patient.created_at)}</div>
+          <div className="flex flex-col items-end gap-3">
+            <div className="flex gap-2">
+              <button
+                onClick={handleCall}
+                disabled={calling}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
+              >
+                {calling ? "Calling..." : "📞 Call"}
+              </button>
+              <button
+                onClick={openScheduleModal}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
+              >
+                📅 Schedule Call
+              </button>
+            </div>
+            <div className="text-right text-xs text-slate-400">
+              <div>Patient since</div>
+              <div className="font-medium text-slate-600">{formatDate(patient.created_at)}</div>
+            </div>
           </div>
         </div>
 
@@ -162,6 +237,69 @@ export default function PatientDetail() {
           </div>
         )}
       </section>
+
+      {showSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h2 className="text-lg font-bold text-slate-900 mb-1">Schedule Appointment</h2>
+            <p className="text-sm text-slate-500 mb-4">
+              For {patient.name ?? patient.phone}
+            </p>
+            <form onSubmit={submitSchedule} className="space-y-4">
+              <div>
+                <label className="block text-xs text-slate-500 uppercase mb-1">Doctor Name *</label>
+                <input
+                  type="text"
+                  placeholder="Dr. Patel"
+                  value={doctorName}
+                  onChange={(e) => setDoctorName(e.target.value)}
+                  required
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 uppercase mb-1">Date &amp; Time *</label>
+                <input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  required
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 uppercase mb-1">Notes</label>
+                <textarea
+                  rows={2}
+                  placeholder="Optional notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm resize-none"
+                />
+              </div>
+
+              {scheduleError && <p className="text-red-600 text-sm">{scheduleError}</p>}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="submit"
+                  disabled={scheduling}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded"
+                >
+                  {scheduling ? "Scheduling..." : "Schedule"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSchedule(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Call history */}
       <section>
