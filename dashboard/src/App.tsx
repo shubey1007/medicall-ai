@@ -11,6 +11,7 @@ import Doctors from "./pages/Doctors";
 import AddDoctor from "./pages/AddDoctor";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
+import DemoCall from "./pages/DemoCall";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="doctors/add" element={<AddDoctor />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="demo" element={<DemoCall />} />
       </Route>
     </Routes>
   );
