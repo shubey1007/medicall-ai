@@ -4,25 +4,32 @@ import Vapi from "@vapi-ai/web";
 
 const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY ?? "";
 
+const SYSTEM_PROMPT = `You are MediCall AI, a friendly medical assistant for demo purposes.
+Always respond in English. Help with: symptoms, medications, appointment questions.
+This is a live demo — be engaging and show off your capabilities!
+Critical safety rule: Always recommend consulting a doctor for personal medical advice.`;
+
 const ASSISTANT_CONFIG = {
   name: "MediCall AI Demo",
   model: {
-    provider: "openai" as const,
+    provider: "openai",
     model: "gpt-4o-mini",
-    systemPrompt: `You are MediCall AI, a friendly medical assistant for demo purposes.
-Always respond in English. Help with: symptoms, medications, appointment questions.
-This is a live demo — be engaging and show off your capabilities!
-Critical safety rule: Always recommend consulting a doctor for personal medical advice.`,
     temperature: 0.7,
+    messages: [
+      {
+        role: "system",
+        content: SYSTEM_PROMPT,
+      },
+    ],
   },
   voice: {
-    provider: "playht" as const,
-    voiceId: "jennifer",
+    provider: "11labs",
+    voiceId: "burt",
   },
   transcriber: {
-    provider: "deepgram" as const,
+    provider: "deepgram",
     model: "nova-2",
-    language: "multi",
+    language: "en-US",
   },
   firstMessage:
     "Hello! I'm MediCall AI. I can answer medical questions, help with medications, or assist with appointments. How can I help you today?",
@@ -40,13 +47,20 @@ export default function DemoCall() {
   const [status, setStatus] = useState<CallStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [volume, setVolume] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
   useEffect(() => {
-    if (!VAPI_PUBLIC_KEY) return;
+    if (!VAPI_PUBLIC_KEY) {
+      console.warn("VITE_VAPI_PUBLIC_KEY is not set — Vapi will not initialize");
+      return;
+    }
     const vapi = new Vapi(VAPI_PUBLIC_KEY);
     vapiRef.current = vapi;
 
-    vapi.on("call-start", () => setStatus("active"));
+    vapi.on("call-start", () => {
+      setStatus("active");
+      setErrorMsg("");
+    });
     vapi.on("call-end", () => {
       setStatus("ended");
       setVolume(0);
@@ -62,6 +76,13 @@ export default function DemoCall() {
     });
     vapi.on("error", (e: unknown) => {
       console.error("Vapi error:", e);
+      const errorObj = e as { error?: { errorMsg?: string; msg?: string }; errorMsg?: string };
+      const msg =
+        errorObj?.error?.errorMsg ??
+        errorObj?.error?.msg ??
+        errorObj?.errorMsg ??
+        "Call failed. Check console and Vapi dashboard for details.";
+      setErrorMsg(msg);
       setStatus("idle");
     });
 
@@ -72,14 +93,21 @@ export default function DemoCall() {
 
   async function startCall() {
     if (!VAPI_PUBLIC_KEY) {
-      alert(
-        "Vapi public key not configured. Set VITE_VAPI_PUBLIC_KEY in dashboard/.env"
-      );
+      setErrorMsg("Vapi public key not configured. Set VITE_VAPI_PUBLIC_KEY in dashboard/.env");
       return;
     }
     setStatus("connecting");
     setTranscript([]);
-    await vapiRef.current?.start(ASSISTANT_CONFIG as Parameters<InstanceType<typeof Vapi>["start"]>[0]);
+    setErrorMsg("");
+    try {
+      await vapiRef.current?.start(
+        ASSISTANT_CONFIG as Parameters<InstanceType<typeof Vapi>["start"]>[0]
+      );
+    } catch (e) {
+      console.error("Failed to start Vapi call:", e);
+      setErrorMsg(e instanceof Error ? e.message : "Failed to start call");
+      setStatus("idle");
+    }
   }
 
   function endCall() {
@@ -144,6 +172,12 @@ export default function DemoCall() {
           >
             End Call
           </button>
+        )}
+
+        {errorMsg && (
+          <div className="w-full bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+            <strong>Error:</strong> {errorMsg}
+          </div>
         )}
       </div>
 
