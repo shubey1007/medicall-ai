@@ -115,8 +115,8 @@ async def send_appointment_reminder(
         raise HTTPException(status_code=404, detail="Appointment not found")
 
     settings = get_settings()
-    if not settings.vapi_api_key:
-        return {"status": "skipped", "reason": "Vapi not configured"}
+    if not settings.vapi_api_key or not settings.vapi_phone_number_id:
+        return {"status": "skipped", "reason": "Vapi not fully configured (missing VAPI_API_KEY or VAPI_PHONE_NUMBER_ID)"}
 
     patient_phone = appt.patient.phone if appt.patient else None
     if not patient_phone:

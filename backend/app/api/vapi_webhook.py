@@ -61,6 +61,17 @@ async def vapi_webhook(request: Request) -> JSONResponse:
     if msg_type == "end-of-call-report":
         transcript = message.get("transcript", "")
         logger.info("vapi_call_ended", call_id=call_id, transcript_len=len(transcript))
+        # Trigger memory consolidation for demo calls (no DB patient_id — skipped gracefully)
+        if transcript.strip():
+            import asyncio
+            from app.services import memory_svc
+            asyncio.create_task(
+                memory_svc.consolidate(
+                    patient_id=None,   # type: ignore[arg-type]  # Vapi path has no DB patient
+                    call_id=None,      # type: ignore[arg-type]
+                    transcript_text=transcript,
+                )
+            )
         return JSONResponse(content={"received": True})
 
     return JSONResponse(content={"received": True})

@@ -40,12 +40,20 @@ Transcript:
 
 
 async def consolidate(
-    patient_id: uuid.UUID,
-    call_id: uuid.UUID,
+    patient_id: uuid.UUID | None,
+    call_id: uuid.UUID | None,
     transcript_text: str,
 ) -> None:
-    """Extract memories from transcript and store in Qdrant."""
+    """Extract memories from transcript and store in Qdrant.
+
+    If patient_id is None (e.g., Vapi demo path with no DB patient),
+    the extraction step is skipped and no memories are stored.
+    """
     if not transcript_text.strip():
+        return
+
+    if not patient_id:
+        logger.debug("memory_consolidation_skipped", reason="no_patient_id")
         return
 
     settings = get_settings()

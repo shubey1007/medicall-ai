@@ -58,6 +58,8 @@ async def generate_summary(call_id: uuid.UUID) -> CallSummary | None:
             f"[{e.role.value}{':'+e.agent_name if e.agent_name else ''}] {e.content}"
             for e in call.transcript_entries
         )
+        # Capture patient_id while session is still open (avoids DetachedInstanceError)
+        patient_id = call.patient_id
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     try:
@@ -102,7 +104,7 @@ async def generate_summary(call_id: uuid.UUID) -> CallSummary | None:
         # Trigger post-call memory consolidation in background
         asyncio.create_task(
             _consolidate_memory(
-                patient_id=call.patient_id,
+                patient_id=patient_id,
                 call_id=call_id,
             )
         )

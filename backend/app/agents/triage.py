@@ -167,6 +167,8 @@ class TriageAgent(BaseAgent):
                 }
 
         if tool_name == "recall_patient_memory":
+            if not session.patient_id:
+                return {"found": False, "message": "Patient identity not established for this session."}
             from app.services.qdrant_svc import search_patient_memory
             query = arguments.get("query", "patient history")
             memories = await search_patient_memory(session.patient_id, query)
