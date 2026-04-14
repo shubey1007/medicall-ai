@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import analytics, appointments, calls, doctors, patients, webhooks
+from app.api.vapi_webhook import router as vapi_router
 from app.config import get_settings
 from app.services.qdrant_svc import close_client, ensure_collections
 from app.services.transcript_svc import transcript_service
@@ -51,6 +52,7 @@ fastapi_app.include_router(patients.router)
 fastapi_app.include_router(doctors.router)
 fastapi_app.include_router(appointments.router)
 fastapi_app.include_router(analytics.router)
+fastapi_app.include_router(vapi_router)
 
 
 @fastapi_app.get("/health")
