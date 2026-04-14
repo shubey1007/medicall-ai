@@ -5,13 +5,6 @@ import { api } from "@/lib/api";
 import { formatDate, formatDatePretty, formatDuration, formatTimePretty } from "@/lib/format";
 import type { Patient, Call, Appointment, PaginatedResponse } from "@/types";
 
-const URGENCY_COLORS: Record<string, string> = {
-  low: "bg-green-100 text-green-800",
-  medium: "bg-yellow-100 text-yellow-800",
-  high: "bg-red-100 text-red-800",
-  critical: "bg-red-200 text-red-900 font-semibold",
-};
-
 const STATUS_COLORS: Record<string, string> = {
   ringing: "bg-yellow-100 text-yellow-800",
   active: "bg-green-100 text-green-800",
