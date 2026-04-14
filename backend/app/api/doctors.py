@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +9,7 @@ from app.database import get_db
 from app.models.doctor import Doctor
 from app.schemas.common import PaginatedResponse
 from app.schemas.doctor import DoctorCreate, DoctorOut, DoctorUpdate
+from app.services.qdrant_svc import upsert_doctor
 
 router = APIRouter(prefix="/api/doctors", tags=["doctors"])
 
@@ -62,6 +64,28 @@ async def create_doctor(payload: DoctorCreate, db: AsyncSession = Depends(get_db
     db.add(doctor)
     await db.commit()
     await db.refresh(doctor)
+
+    # Sync doctor profile to Qdrant for semantic search
+    _profile_text = (
+        f"{doctor.name} is a {doctor.specialization} specialist. "
+        f"Available on {', '.join(doctor.available_days or [])} from {doctor.available_hours}. "
+        f"{doctor.bio or ''}"
+    ).strip()
+    asyncio.create_task(
+        upsert_doctor(
+            doctor_id=doctor.id,
+            profile_text=_profile_text,
+            metadata={
+                "name": doctor.name,
+                "specialization": doctor.specialization,
+                "available_days": doctor.available_days or [],
+                "available_hours": doctor.available_hours,
+                "phone": doctor.phone,
+                "email": doctor.email,
+            },
+        )
+    )
+
     return DoctorOut.model_validate(doctor)
 
 
@@ -79,6 +103,28 @@ async def update_doctor(
         setattr(doctor, field, value)
     await db.commit()
     await db.refresh(doctor)
+
+    # Sync updated doctor profile to Qdrant for semantic search
+    _profile_text = (
+        f"{doctor.name} is a {doctor.specialization} specialist. "
+        f"Available on {', '.join(doctor.available_days or [])} from {doctor.available_hours}. "
+        f"{doctor.bio or ''}"
+    ).strip()
+    asyncio.create_task(
+        upsert_doctor(
+            doctor_id=doctor.id,
+            profile_text=_profile_text,
+            metadata={
+                "name": doctor.name,
+                "specialization": doctor.specialization,
+                "available_days": doctor.available_days or [],
+                "available_hours": doctor.available_hours,
+                "phone": doctor.phone,
+                "email": doctor.email,
+            },
+        )
+    )
+
     return DoctorOut.model_validate(doctor)
 
 
