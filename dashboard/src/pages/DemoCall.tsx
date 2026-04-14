@@ -66,14 +66,26 @@ export default function DemoCall() {
       setVolume(0);
     });
     vapi.on("volume-level", (v: number) => setVolume(v));
-    vapi.on("message", (msg: { type: string; role?: string; transcript?: string }) => {
-      if (msg.type === "transcript" && msg.transcript) {
-        setTranscript((prev) => [
-          ...prev,
-          { role: msg.role ?? "unknown", text: msg.transcript! },
-        ]);
+    vapi.on(
+      "message",
+      (msg: {
+        type: string;
+        role?: string;
+        transcript?: string;
+        transcriptType?: "partial" | "final";
+      }) => {
+        if (
+          msg.type === "transcript" &&
+          msg.transcript &&
+          msg.transcriptType === "final"
+        ) {
+          setTranscript((prev) => [
+            ...prev,
+            { role: msg.role ?? "unknown", text: msg.transcript! },
+          ]);
+        }
       }
-    });
+    );
     vapi.on("error", (e: unknown) => {
       console.error("Vapi error:", e);
       const errorObj = e as { error?: { errorMsg?: string; msg?: string }; errorMsg?: string };
