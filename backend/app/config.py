@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     google_sheets_spreadsheet_id: str = ""
 
     # Qdrant
-    qdrant_url: str = "https://your-cluster.qdrant.tech"
+    qdrant_url: str = ""
     qdrant_api_key: str = ""
 
     # Vapi

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import analytics, appointments, calls, doctors, patients, webhooks
 from app.config import get_settings
-from app.services.qdrant_svc import ensure_collections
+from app.services.qdrant_svc import close_client, ensure_collections
 from app.services.transcript_svc import transcript_service
 from app.utils.logger import configure_logging, get_logger
 from app.websocket import twilio_stream
@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     transcript_service.start()
     await ensure_collections()
     yield
+    await close_client()
     await transcript_service.stop()
     logger.info("app_shutdown")
 
