@@ -1,0 +1,122 @@
+[
+  {
+    "id": "ibuprofen-001",
+    "text": "Ibuprofen is an NSAID used for pain, fever, and inflammation. Common side effects include stomach upset and heartburn. Always take with food. Avoid if on blood thinners or aspirin.",
+    "category": "medication",
+    "tags": ["ibuprofen", "NSAID", "pain", "fever"]
+  },
+  {
+    "id": "acetaminophen-001",
+    "text": "Acetaminophen (paracetamol) relieves pain and fever. It is generally safe at recommended doses. Overdose causes serious liver damage. Avoid alcohol when taking acetaminophen.",
+    "category": "medication",
+    "tags": ["acetaminophen", "paracetamol", "pain", "fever", "liver"]
+  },
+  {
+    "id": "chest-pain-001",
+    "text": "Chest pain can be a sign of a heart attack. Key warning signs: pressure or squeezing sensation, pain radiating to arm or jaw, shortness of breath, sweating. Call 911 immediately for these symptoms.",
+    "category": "emergency",
+    "tags": ["chest pain", "heart attack", "emergency", "911"]
+  },
+  {
+    "id": "diabetes-001",
+    "text": "Type 2 diabetes is managed with diet, exercise, and medications like Metformin. Symptoms include frequent urination, excessive thirst, blurred vision. Regular HbA1c monitoring is essential.",
+    "category": "condition",
+    "tags": ["diabetes", "metformin", "blood sugar", "HbA1c"]
+  },
+  {
+    "id": "hypertension-001",
+    "text": "High blood pressure (hypertension) is often asymptomatic. It is managed with lifestyle changes and medications such as ACE inhibitors (lisinopril) or beta-blockers. Target BP is below 130/80 mmHg.",
+    "category": "condition",
+    "tags": ["hypertension", "blood pressure", "lisinopril", "ACE inhibitor"]
+  },
+  {
+    "id": "asthma-001",
+    "text": "Asthma is a chronic lung condition causing wheezing, shortness of breath, and coughing. Albuterol is a rescue inhaler for acute attacks. Avoid triggers like smoke, dust, and pollen.",
+    "category": "condition",
+    "tags": ["asthma", "albuterol", "inhaler", "wheezing", "COPD"]
+  },
+  {
+    "id": "appointment-001",
+    "text": "To book an appointment, patients should provide their preferred date, time, and doctor name. Clinic hours are Monday to Friday, 9am to 5pm. Same-day appointments are subject to availability.",
+    "category": "scheduling",
+    "tags": ["appointment", "booking", "schedule", "clinic hours"]
+  },
+  {
+    "id": "stroke-001",
+    "text": "FAST acronym for stroke: Face drooping, Arm weakness, Speech difficulty, Time to call 911. Stroke is a medical emergency. Every minute without treatment increases brain damage.",
+    "category": "emergency",
+    "tags": ["stroke", "FAST", "emergency", "911", "brain"]
+  },
+  {
+    "id": "allergy-001",
+    "text": "Drug allergies can cause rashes, hives, swelling, or anaphylaxis. Always inform your doctor about known allergies before starting any new medication. Carry an EpiPen if prescribed.",
+    "category": "safety",
+    "tags": ["allergy", "drug allergy", "anaphylaxis", "EpiPen"]
+  },
+  {
+    "id": "covid-001",
+    "text": "COVID-19 symptoms include fever, cough, fatigue, loss of taste or smell, and shortness of breath. Isolate if symptomatic. Antiviral medications like Paxlovid are available for high-risk patients.",
+    "category": "condition",
+    "tags": ["COVID-19", "coronavirus", "fever", "cough", "Paxlovid"]
+  },
+  {
+    "id": "lisinopril-001",
+    "text": "Lisinopril is an ACE inhibitor used for high blood pressure and heart failure. Common side effects include a persistent dry cough and dizziness. Avoid with potassium supplements or NSAIDs.",
+    "category": "medication",
+    "tags": ["lisinopril", "ACE inhibitor", "blood pressure", "heart failure"]
+  },
+  {
+    "id": "metformin-001",
+    "text": "Metformin is the first-line medication for type 2 diabetes. It should be taken with meals to reduce stomach upset. Avoid alcohol. Temporarily stop before contrast dye procedures.",
+    "category": "medication",
+    "tags": ["metformin", "diabetes", "blood sugar", "antidiabetic"]
+  },
+  {
+    "id": "amoxicillin-001",
+    "text": "Amoxicillin is a penicillin-class antibiotic used for bacterial infections. Side effects include diarrhea and rash. Always complete the full prescribed course. May reduce oral contraceptive efficacy.",
+    "category": "medication",
+    "tags": ["amoxicillin", "antibiotic", "penicillin", "bacterial infection"]
+  },
+  {
+    "id": "warfarin-001",
+    "text": "Warfarin is an anticoagulant (blood thinner) that prevents clots. It requires regular INR blood tests. Many foods (especially leafy greens high in vitamin K) and drugs interact with warfarin. Bleeding risk is significant.",
+    "category": "medication",
+    "tags": ["warfarin", "anticoagulant", "blood thinner", "INR", "bleeding"]
+  },
+  {
+    "id": "atorvastatin-001",
+    "text": "Atorvastatin is a statin used to lower cholesterol. It should be taken in the evening. Grapefruit juice can increase blood levels. Side effects include muscle aches — report severe muscle pain immediately.",
+    "category": "medication",
+    "tags": ["atorvastatin", "statin", "cholesterol", "lipid", "grapefruit"]
+  },
+  {
+    "id": "fever-001",
+    "text": "A fever above 38°C (100.4°F) in adults often indicates infection. Mild fever can be managed with rest, fluids, and acetaminophen or ibuprofen. Seek care for fever above 39.5°C, lasting more than 3 days, or with stiff neck/rash.",
+    "category": "symptom",
+    "tags": ["fever", "temperature", "infection", "acetaminophen", "ibuprofen"]
+  },
+  {
+    "id": "dehydration-001",
+    "text": "Dehydration signs include dark urine, dry mouth, dizziness, and decreased urination. Mild to moderate dehydration can be treated with oral fluids and electrolytes. Severe dehydration requires IV fluids.",
+    "category": "symptom",
+    "tags": ["dehydration", "fluids", "electrolytes", "dizziness"]
+  },
+  {
+    "id": "anaphylaxis-001",
+    "text": "Anaphylaxis is a severe allergic reaction causing throat swelling, hives, drop in blood pressure, and difficulty breathing. Inject epinephrine (EpiPen) immediately and call 911. Requires emergency care even after EpiPen.",
+    "category": "emergency",
+    "tags": ["anaphylaxis", "allergic reaction", "EpiPen", "epinephrine", "emergency", "911"]
+  },
+  {
+    "id": "mental-health-001",
+    "text": "Common mental health conditions include depression and anxiety. Symptoms of depression: persistent sadness, loss of interest, fatigue, sleep changes. If you are having thoughts of self-harm, call 988 (Suicide & Crisis Lifeline) immediately.",
+    "category": "mental health",
+    "tags": ["depression", "anxiety", "mental health", "988", "crisis", "self-harm"]
+  },
+  {
+    "id": "back-pain-001",
+    "text": "Most acute back pain resolves within 4-6 weeks with rest, gentle movement, and over-the-counter pain relievers. Red flags requiring immediate care: pain after trauma, bladder/bowel dysfunction, leg weakness, or fever with back pain.",
+    "category": "symptom",
+    "tags": ["back pain", "spine", "ibuprofen", "physiotherapy", "red flags"]
+  }
+]
