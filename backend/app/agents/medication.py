@@ -109,6 +109,21 @@ class MedicationAgent(BaseAgent):
                     "required": ["medication_name"],
                 },
             },
+            {
+                "type": "function",
+                "name": "search_medical_knowledge",
+                "description": "Search the medical knowledge base for accurate information about medications, conditions, or symptoms.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Medical question or topic, e.g. 'side effects of ibuprofen' or 'chest pain symptoms'",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
             END_CALL_TOOL,
         ]
 
@@ -133,6 +148,14 @@ class MedicationAgent(BaseAgent):
                     "message": f"No information available for '{med}'. Please consult your pharmacist.",
                 }
             return {"found": True, "medication": med, **info}
+
+        if tool_name == "search_medical_knowledge":
+            from app.services.qdrant_svc import search_medical_knowledge
+            query = arguments.get("query", "")
+            results = await search_medical_knowledge(query)
+            if not results:
+                return {"found": False, "message": "No specific information found. Please consult your pharmacist."}
+            return {"found": True, "results": [r["text"] for r in results]}
 
         logger.warning("unknown_tool_call", tool=tool_name, agent=self.name)
         return {"status": "error", "message": f"Unknown tool '{tool_name}'"}

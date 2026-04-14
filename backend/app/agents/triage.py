@@ -79,6 +79,36 @@ class TriageAgent(BaseAgent):
                     "required": ["phone"],
                 },
             },
+            {
+                "type": "function",
+                "name": "recall_patient_memory",
+                "description": "Search the patient's memory from previous calls to understand their history, past symptoms, or medications.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "What to search for, e.g. 'previous symptoms' or 'medications mentioned before'",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "type": "function",
+                "name": "find_doctor",
+                "description": "Semantically search for a doctor based on specialization, availability, or patient needs.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language description of what's needed, e.g. 'heart specialist available on Monday'",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
             END_CALL_TOOL,
         ]
 
@@ -135,6 +165,22 @@ class TriageAgent(BaseAgent):
                     "name": patient.name,
                     "medical_context": patient.medical_context,
                 }
+
+        if tool_name == "recall_patient_memory":
+            from app.services.qdrant_svc import search_patient_memory
+            query = arguments.get("query", "patient history")
+            memories = await search_patient_memory(session.patient_id, query)
+            if not memories:
+                return {"found": False, "message": "No previous memories found for this patient."}
+            return {"found": True, "memories": [m["text"] for m in memories]}
+
+        if tool_name == "find_doctor":
+            from app.services.qdrant_svc import search_doctors
+            query = arguments.get("query", "general doctor")
+            doctors = await search_doctors(query)
+            if not doctors:
+                return {"found": False, "message": "No matching doctors found."}
+            return {"found": True, "doctors": doctors}
 
         logger.warning("unknown_tool_call", tool=tool_name, agent=self.name)
         return {"status": "error", "message": f"Unknown tool '{tool_name}'"}

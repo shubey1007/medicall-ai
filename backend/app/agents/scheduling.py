@@ -85,6 +85,21 @@ class SchedulingAgent(BaseAgent):
                     "required": ["appointment_id"],
                 },
             },
+            {
+                "type": "function",
+                "name": "find_doctor",
+                "description": "Semantically search for a doctor by specialization or availability.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language description, e.g. 'cardiologist available on Monday morning'",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
             END_CALL_TOOL,
         ]
 
@@ -151,6 +166,11 @@ class SchedulingAgent(BaseAgent):
                 appt.status = AppointmentStatus.CANCELLED
                 await db.commit()
                 return {"status": "cancelled", "appointment_id": str(appt.id)}
+
+        if tool_name == "find_doctor":
+            from app.services.qdrant_svc import search_doctors
+            doctors = await search_doctors(arguments.get("query", ""))
+            return {"found": bool(doctors), "doctors": doctors}
 
         logger.warning("unknown_tool_call", tool=tool_name, agent=self.name)
         return {"status": "error", "message": f"Unknown tool '{tool_name}'"}
