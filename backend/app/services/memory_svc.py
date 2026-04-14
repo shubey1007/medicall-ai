@@ -3,6 +3,7 @@
 After a call ends and the summary is saved, extract key medical facts
 from the transcript and store them in Qdrant patient_memory collection.
 """
+import json
 import uuid
 
 from openai import AsyncOpenAI
@@ -66,7 +67,6 @@ async def consolidate(
             response_format={"type": "json_object"},
         )
 
-        import json
         raw = resp.choices[0].message.content or "{}"
         data = json.loads(raw)
         memories: list = data.get("memories", [])

@@ -104,7 +104,6 @@ async def generate_summary(call_id: uuid.UUID) -> CallSummary | None:
             _consolidate_memory(
                 patient_id=call.patient_id,
                 call_id=call_id,
-                db_call_id=call_id,
             )
         )
 
@@ -114,7 +113,6 @@ async def generate_summary(call_id: uuid.UUID) -> CallSummary | None:
 async def _consolidate_memory(
     patient_id: uuid.UUID,
     call_id: uuid.UUID,
-    db_call_id: uuid.UUID,
 ) -> None:
     """Background task: extract and store memories from call transcript."""
     from app.models import TranscriptEntry
@@ -122,7 +120,7 @@ async def _consolidate_memory(
         async with db_session() as db:
             result = await db.execute(
                 select(TranscriptEntry)
-                .where(TranscriptEntry.call_id == db_call_id)
+                .where(TranscriptEntry.call_id == call_id)
                 .order_by(TranscriptEntry.timestamp)
             )
             rows = result.scalars().all()
@@ -135,5 +133,4 @@ async def _consolidate_memory(
             transcript_text=transcript_text,
         )
     except Exception as exc:
-        from app.utils.logger import get_logger
-        get_logger(__name__).exception("memory_consolidation_task_failed", error=str(exc))
+        logger.exception("memory_consolidation_task_failed", error=str(exc))
