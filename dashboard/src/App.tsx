@@ -12,6 +12,7 @@ import AddDoctor from "./pages/AddDoctor";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import DemoCall from "./pages/DemoCall";
+import Docs from "./pages/Docs";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="analytics" element={<Analytics />} />
         <Route path="settings" element={<Settings />} />
         <Route path="demo" element={<DemoCall />} />
+        <Route path="docs" element={<Docs />} />
       </Route>
     </Routes>
   );
