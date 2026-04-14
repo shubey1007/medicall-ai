@@ -35,7 +35,7 @@ COLLECTIONS = {
 
 _client: AsyncQdrantClient | None = None
 _oai_client: AsyncOpenAI | None = None
-_qdrant_available: bool = True
+_qdrant_available: bool = False
 
 
 def get_client() -> AsyncQdrantClient:
@@ -71,7 +71,7 @@ async def ensure_collections() -> None:
     """Create Qdrant collections if they don't exist. Called at app startup."""
     global _qdrant_available
     settings = get_settings()
-    if not settings.qdrant_url or settings.qdrant_url == "":
+    if not settings.qdrant_url:
         logger.warning("qdrant_not_configured", reason="QDRANT_URL not set")
         _qdrant_available = False
         return
