@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { formatDate, formatDuration } from "@/lib/format";
+import { formatDate, formatDatePretty, formatDuration, formatTimePretty } from "@/lib/format";
 import type { Patient, Call, Appointment, PaginatedResponse } from "@/types";
 
 const URGENCY_COLORS: Record<string, string> = {
@@ -223,7 +223,10 @@ export default function PatientDetail() {
                 {appointments.map((a) => (
                   <tr key={a.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 font-medium">{a.doctor_name}</td>
-                    <td className="px-4 py-3 text-slate-600">{formatDate(a.scheduled_at)}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{formatDatePretty(a.scheduled_at)}</div>
+                      <div className="text-xs text-slate-500">{formatTimePretty(a.scheduled_at)}</div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs ${APPT_COLORS[a.status] ?? ""}`}>
                         {a.status}
@@ -321,7 +324,10 @@ export default function PatientDetail() {
               <tbody>
                 {calls.map((c) => (
                   <tr key={c.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3 text-slate-600">{formatDate(c.started_at)}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{formatDatePretty(c.started_at)}</div>
+                      <div className="text-xs text-slate-500">{formatTimePretty(c.started_at)}</div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[c.status] ?? ""}`}>
                         {c.status}

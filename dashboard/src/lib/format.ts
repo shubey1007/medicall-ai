@@ -18,3 +18,19 @@ export function formatDateTime(iso: string): string {
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
+
+export function formatDatePretty(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function formatTimePretty(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
