@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Env
+.env
+.env.local
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+backend/alembic/versions/__pycache__/
+
+# Local tooling / artifacts (do not commit)
+.claude/
+*.mkv
+*.mov
+HackBlr Problem Statements.pdf
