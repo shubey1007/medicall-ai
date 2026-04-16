@@ -34,3 +34,4 @@ backend/alembic/versions/__pycache__/
 *.mkv
 *.mov
 HackBlr Problem Statements.pdf
+docs/superpowers/
