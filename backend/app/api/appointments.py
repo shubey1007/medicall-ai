@@ -1,8 +1,10 @@
 import uuid
+from datetime import timedelta, timezone as _tz
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -59,6 +61,28 @@ async def create_appointment(
     payload: AppointmentCreate,
     db: AsyncSession = Depends(get_db),
 ) -> AppointmentOut:
+    # Conflict check: refuse if this doctor already has a non-cancelled
+    # appointment within 15 minutes of the requested slot. Prevents the
+    # Scheduling agent and staff UI from double-booking.
+    window = timedelta(minutes=15)
+    conflict_q = select(Appointment).where(
+        and_(
+            Appointment.doctor_name == payload.doctor_name,
+            Appointment.status != AppointmentStatus.CANCELLED,
+            Appointment.scheduled_at >= payload.scheduled_at - window,
+            Appointment.scheduled_at <= payload.scheduled_at + window,
+        )
+    )
+    existing = (await db.execute(conflict_q)).scalars().first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{payload.doctor_name} already has an appointment near that "
+                f"time ({existing.scheduled_at.isoformat()}). Pick a different slot."
+            ),
+        )
+
     appt = Appointment(**payload.model_dump(), status=AppointmentStatus.PENDING)
     db.add(appt)
     await db.flush()
@@ -119,11 +143,39 @@ async def send_appointment_reminder(
     if not vapi_api_key or not vapi_phone_number_id:
         return {"status": "skipped", "reason": "Vapi not fully configured (missing VAPI_API_KEY or VAPI_PHONE_NUMBER_ID)"}
 
+    # Guard against the common config mistake of pasting a phone number into
+    # VAPI_PHONE_NUMBER_ID — Vapi expects a UUID from its dashboard.
+    try:
+        uuid.UUID(vapi_phone_number_id)
+    except ValueError:
+        return {
+            "status": "skipped",
+            "reason": (
+                "vapi_phone_number_id is not a valid UUID. Copy the phone "
+                "number ID (not the phone number itself) from the Vapi "
+                "dashboard and update it in Settings."
+            ),
+        }
+
     patient_phone = appt.patient.phone if appt.patient else None
     if not patient_phone:
         return {"status": "skipped", "reason": "No patient phone number"}
 
-    scheduled = appt.scheduled_at.strftime("%A, %B %d at %I:%M %p")
+    # Convert scheduled_at (UTC in DB) into the clinic's local timezone before
+    # rendering it for the patient. Otherwise the reminder call says a time
+    # that's offset by the server's TZ (UTC) instead of the clinic's actual TZ.
+    tz_name = get_effective("clinic_timezone") or "Asia/Kolkata"
+    try:
+        clinic_tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        clinic_tz = ZoneInfo("UTC")
+
+    scheduled_dt = appt.scheduled_at
+    if scheduled_dt.tzinfo is None:
+        # Older rows may be naive; treat as UTC
+        scheduled_dt = scheduled_dt.replace(tzinfo=_tz.utc)
+    local_dt = scheduled_dt.astimezone(clinic_tz)
+    scheduled = local_dt.strftime("%A, %B %d at %I:%M %p")
 
     payload = {
         "phoneNumberId": vapi_phone_number_id,
