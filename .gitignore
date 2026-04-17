@@ -30,7 +30,8 @@ Thumbs.db
 backend/alembic/versions/__pycache__/
 
 # Local tooling / artifacts (do not commit)
-.claude/
+.claude/*
+!.claude/settings.json
 *.mkv
 *.mov
 HackBlr Problem Statements.pdf
