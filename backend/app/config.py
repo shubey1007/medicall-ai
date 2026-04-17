@@ -40,6 +40,20 @@ class Settings(BaseSettings):
     # this MUST be False.
     twilio_skip_signature_validation: bool = False
 
+    # Dashboard auth — single shared password + JWT secret for signing tokens.
+    # Bootstrap-only (NOT exposed in Settings UI to avoid the "lock yourself
+    # out" / circular config problem). Set both in .env before first run.
+    # If dashboard_password is empty, login will be rejected by the API.
+    dashboard_password: str = ""
+    jwt_secret: str = "change-me-in-env-please"
+    jwt_ttl_hours: int = 24
+
+    # Dashboard auth — shared bearer token required for /api/* (except public
+    # webhooks) and the Socket.IO dashboard namespace. Leave empty to disable
+    # auth entirely (clean-checkout friendly). When set, the dashboard shows a
+    # login page and clients must present Authorization: Bearer <token>.
+    dashboard_api_token: str = ""
+
     # Google Sheets (optional)
     google_sheets_credentials_json: str = ""
     google_sheets_spreadsheet_id: str = ""

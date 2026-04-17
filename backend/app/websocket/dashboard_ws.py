@@ -3,6 +3,7 @@ from typing import Any
 
 import socketio
 
+from app.auth import auth_enabled, verify_token_value
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,7 +18,18 @@ DASHBOARD_NS = "/dashboard"
 
 @sio.event(namespace=DASHBOARD_NS)
 async def connect(sid: str, environ: dict, auth: dict | None = None) -> None:
+    """Reject the connection if auth is configured and the client didn't
+    pass a valid token in the Socket.IO handshake `auth` payload.
+    Frontend sends `{ token: "..." }` via the `auth` option of io().
+    """
+    if auth_enabled():
+        token = (auth or {}).get("token") if isinstance(auth, dict) else None
+        if not token or not verify_token_value(token):
+            logger.warning("dashboard_connect_rejected", sid=sid, reason="invalid_token")
+            # Returning False from a Socket.IO connect handler refuses the connection
+            return False
     logger.info("dashboard_connected", sid=sid)
+    return True
 
 
 @sio.event(namespace=DASHBOARD_NS)
