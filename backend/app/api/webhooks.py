@@ -18,8 +18,28 @@ router = APIRouter(tags=["twilio"])
 
 
 async def _validate_twilio_signature(request: Request) -> None:
-    if get_settings().environment != "production":
+    """Verify the X-Twilio-Signature header on inbound Twilio webhooks.
+
+    Always validates when a Twilio auth token is configured. The previous
+    behaviour — bypassing validation in any non-production env — left the
+    webhook publicly spoofable on the ngrok tunnel we use for local dev,
+    so anyone could forge /twilio/incoming requests and burn our OpenAI
+    and Twilio credits. To bypass intentionally (e.g. testing with no real
+    Twilio at all), set TWILIO_SKIP_SIGNATURE_VALIDATION=true in .env.
+    """
+    settings = get_settings()
+    if settings.twilio_skip_signature_validation:
+        logger.warning("twilio_signature_validation_skipped_via_flag")
         return
+
+    auth_token = get_effective("twilio_auth_token")
+    if not auth_token:
+        # No token configured at all — can't validate; reject so a forgotten
+        # configuration doesn't silently open a spoofing hole.
+        raise HTTPException(
+            status_code=503,
+            detail="Twilio auth token not configured; cannot validate webhook",
+        )
 
     signature = request.headers.get("X-Twilio-Signature", "")
     form = await request.form()
@@ -29,7 +49,7 @@ async def _validate_twilio_signature(request: Request) -> None:
     if request.url.query:
         url = f"{url}?{request.url.query}"
 
-    validator = RequestValidator(get_effective("twilio_auth_token"))
+    validator = RequestValidator(auth_token)
     if not validator.validate(url, dict(form), signature):
         raise HTTPException(status_code=403, detail="Invalid Twilio signature")
 
