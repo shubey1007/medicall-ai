@@ -17,7 +17,7 @@ interface AdminProfile {
 }
 
 interface SettingMeta {
-  value: string;   // possibly masked (●●●●)
+  value: string;
   source: "db" | "env" | "unset";
 }
 
@@ -52,7 +52,7 @@ const CREDENTIAL_GROUPS: CredentialGroup[] = [
     icon: "📞",
     fields: [
       { key: "twilio_account_sid", label: "Account SID", placeholder: "AC..." },
-      { key: "twilio_auth_token", label: "Auth Token", placeholder: "●●●●", secret: true },
+      { key: "twilio_auth_token", label: "Auth Token", secret: true },
       { key: "twilio_phone_number", label: "Phone Number", placeholder: "+1234567890" },
       { key: "twilio_webhook_url", label: "Webhook URL", placeholder: "https://your-ngrok.ngrok.io" },
     ],
@@ -71,7 +71,7 @@ const CREDENTIAL_GROUPS: CredentialGroup[] = [
     icon: "🧠",
     fields: [
       { key: "qdrant_url", label: "Cluster URL", placeholder: "https://your-cluster.qdrant.tech" },
-      { key: "qdrant_api_key", label: "API Key", placeholder: "●●●●", secret: true },
+      { key: "qdrant_api_key", label: "API Key", secret: true },
     ],
   },
   {
@@ -120,9 +120,13 @@ export default function Settings() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
 
-  // Credentials state: key → current edit value
-  const [currentSettings, setCurrentSettings] = useState<Record<string, SettingMeta>>({});
-  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  // Credentials state
+  //   originals: last saved value (from backend) per key — baseline for "dirty" check
+  //   values:    current content of each input field
+  //   sources:   where each value came from (db | env | unset)
+  const [originals, setOriginals] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [sources, setSources] = useState<Record<string, "db" | "env" | "unset">>({});
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [savingGroup, setSavingGroup] = useState<string | null>(null);
   const [savedGroup, setSavedGroup] = useState<string | null>(null);
@@ -131,13 +135,15 @@ export default function Settings() {
   const loadSettings = useCallback(async () => {
     try {
       const res = await api.get<Record<string, SettingMeta>>("/api/settings");
-      setCurrentSettings(res.data);
-      // Initialise edit values to empty (user types new values to override)
-      const initial: Record<string, string> = {};
-      for (const key of Object.keys(res.data)) {
-        initial[key] = "";
+      const vals: Record<string, string> = {};
+      const srcs: Record<string, "db" | "env" | "unset"> = {};
+      for (const [key, meta] of Object.entries(res.data)) {
+        vals[key] = meta.value;
+        srcs[key] = meta.source;
       }
-      setEditValues(initial);
+      setOriginals(vals);
+      setValues(vals);
+      setSources(srcs);
     } catch {
       // backend may not be running; silently skip
     }
@@ -160,11 +166,13 @@ export default function Settings() {
     setSavingGroup(group.title);
     setCredError("");
     try {
+      // Only send fields whose current value differs from the last saved value
       const payload: Record<string, string> = {};
       for (const field of group.fields) {
-        const val = editValues[field.key] ?? "";
-        if (val.trim()) {
-          payload[field.key] = val.trim();
+        const current = values[field.key] ?? "";
+        const original = originals[field.key] ?? "";
+        if (current !== original) {
+          payload[field.key] = current;
         }
       }
       if (Object.keys(payload).length === 0) {
@@ -173,12 +181,6 @@ export default function Settings() {
       }
       await api.put("/api/settings", { settings: payload });
       await loadSettings();
-      // Clear edit fields for this group after saving
-      setEditValues((prev) => {
-        const next = { ...prev };
-        for (const field of group.fields) next[field.key] = "";
-        return next;
-      });
       setSavedGroup(group.title);
       setTimeout(() => setSavedGroup(null), 2500);
     } catch {
@@ -186,6 +188,12 @@ export default function Settings() {
     } finally {
       setSavingGroup(null);
     }
+  }
+
+  function isDirty(group: CredentialGroup): boolean {
+    return group.fields.some(
+      (f) => (values[f.key] ?? "") !== (originals[f.key] ?? ""),
+    );
   }
 
   function toggleVisibility(key: string) {
@@ -273,8 +281,9 @@ export default function Settings() {
           <h2 className="text-lg font-bold text-slate-900">API Credentials</h2>
         </div>
         <p className="text-sm text-slate-500 mb-4">
-          Values saved here are stored in the database and override <code className="bg-slate-100 px-1 rounded">.env</code> file values at runtime.
-          Leave a field blank to keep the existing value.
+          Values saved here are stored in the database and override <code className="bg-slate-100 px-1 rounded">.env</code> at runtime.
+          Each field shows its current effective value and where it came from — edit inline and hit <strong>Save</strong>.
+          Clear a field to revert to the <code className="bg-slate-100 px-1 rounded">.env</code> fallback.
         </p>
 
         {credError && (
@@ -287,7 +296,7 @@ export default function Settings() {
           {CREDENTIAL_GROUPS.map((group) => {
             const isSaving = savingGroup === group.title;
             const justSaved = savedGroup === group.title;
-            const hasChanges = group.fields.some((f) => (editValues[f.key] ?? "").trim() !== "");
+            const dirty = isDirty(group);
 
             return (
               <section key={group.title} className="bg-white border border-slate-200 rounded-lg p-5">
@@ -297,11 +306,11 @@ export default function Settings() {
                   </h3>
                   <div className="flex items-center gap-2">
                     {justSaved && (
-                      <span className="text-green-600 text-xs font-medium">Saved!</span>
+                      <span className="text-green-600 text-xs font-medium">Saved</span>
                     )}
                     <button
                       onClick={() => saveGroup(group)}
-                      disabled={isSaving || !hasChanges}
+                      disabled={isSaving || !dirty}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded"
                     >
                       {isSaving ? "Saving..." : "Save"}
@@ -311,53 +320,47 @@ export default function Settings() {
 
                 <div className="space-y-3">
                   {group.fields.map((field) => {
-                    const meta = currentSettings[field.key];
+                    const source = sources[field.key] ?? "unset";
                     const isVisible = visibleKeys.has(field.key);
                     const inputType = field.secret && !isVisible ? "password" : "text";
 
                     return (
                       <div key={field.key}>
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 mb-1">
                           <label className="text-xs text-slate-500 uppercase font-medium">
                             {field.label}
                           </label>
-                          <div className="flex items-center gap-2">
-                            {meta && sourceBadge(meta.source)}
-                            {meta?.source !== "unset" && meta?.value && (
-                              <span className="text-xs text-slate-400 font-mono truncate max-w-[140px]">
-                                {meta.value}
-                              </span>
-                            )}
-                          </div>
+                          {sourceBadge(source)}
                         </div>
 
                         <div className="relative">
                           {field.multiline ? (
                             <textarea
-                              rows={3}
-                              value={editValues[field.key] ?? ""}
+                              rows={4}
+                              value={values[field.key] ?? ""}
                               onChange={(e) =>
-                                setEditValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                                setValues((prev) => ({ ...prev, [field.key]: e.target.value }))
                               }
-                              placeholder={field.placeholder ?? `Enter new value to override`}
+                              placeholder={field.placeholder}
                               className="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono resize-none"
                             />
                           ) : (
                             <input
                               type={inputType}
-                              value={editValues[field.key] ?? ""}
+                              value={values[field.key] ?? ""}
                               onChange={(e) =>
-                                setEditValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                                setValues((prev) => ({ ...prev, [field.key]: e.target.value }))
                               }
-                              placeholder={field.placeholder ?? `Enter new value to override`}
-                              className="w-full border border-slate-300 rounded px-3 py-2 text-sm pr-10"
+                              placeholder={field.placeholder}
+                              autoComplete={field.secret ? "new-password" : "off"}
+                              className="w-full border border-slate-300 rounded px-3 py-2 text-sm pr-16"
                             />
                           )}
                           {field.secret && !field.multiline && (
                             <button
                               type="button"
                               onClick={() => toggleVisibility(field.key)}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 text-xs font-medium px-1.5 py-0.5 rounded hover:bg-slate-100"
                               tabIndex={-1}
                             >
                               {isVisible ? "Hide" : "Show"}

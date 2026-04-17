@@ -17,15 +17,6 @@ from app.services import settings_svc
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-# Keys that should have their values masked in GET responses.
-_SECRET_KEYS = {
-    "openai_api_key",
-    "twilio_auth_token",
-    "qdrant_api_key",
-    "vapi_api_key",
-    "google_sheets_credentials_json",
-}
-
 # All configurable keys with their env-var fallback name (same as Settings field name).
 ALL_KEYS: list[str] = [
     # OpenAI
@@ -52,21 +43,17 @@ ALL_KEYS: list[str] = [
 ]
 
 
-def _masked(key: str, value: str) -> str:
-    if key not in _SECRET_KEYS or not value:
-        return value
-    # Show first 4 chars + asterisks so the user can tell it's set
-    visible = value[:4] if len(value) >= 4 else value
-    return visible + "●" * 8
-
-
 class SettingsPayload(BaseModel):
     settings: dict[str, str]
 
 
 @router.get("")
 async def get_settings_endpoint(db: AsyncSession = Depends(get_db)) -> dict:
-    """Return all settings. Secrets are masked. Includes source (db|env|unset)."""
+    """Return every setting with its effective value and source (db|env|unset).
+
+    Values are returned as-is (no masking). The dashboard is an admin UI and
+    client-side password inputs provide the UX-level hiding for secrets.
+    """
     from app.config import get_settings
 
     result = await db.execute(select(AppSetting))
@@ -80,16 +67,13 @@ async def get_settings_endpoint(db: AsyncSession = Depends(get_db)) -> dict:
         env_val = getattr(env_settings, key, "") or ""
 
         if db_val:
-            source = "db"
-            display = _masked(key, db_val)
+            source, value = "db", db_val
         elif env_val:
-            source = "env"
-            display = _masked(key, env_val)
+            source, value = "env", env_val
         else:
-            source = "unset"
-            display = ""
+            source, value = "unset", ""
 
-        out[key] = {"value": display, "source": source}
+        out[key] = {"value": value, "source": source}
 
     return out
 
