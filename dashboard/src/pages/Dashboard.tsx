@@ -1,9 +1,11 @@
 // dashboard/src/pages/Dashboard.tsx
 import { useEffect, useRef, useState } from "react";
+import { useDispatch } from "react-redux";
 import { api } from "@/lib/api";
 import { useAppSelector } from "@/store";
+import { callStarted } from "@/store/callSlice";
 import ActiveCallCard from "@/components/ActiveCallCard";
-import type { Patient, PaginatedResponse } from "@/types";
+import type { Call, Patient, PaginatedResponse } from "@/types";
 
 interface Stats {
   total_calls: number;
@@ -13,6 +15,7 @@ interface Stats {
 }
 
 export default function Dashboard() {
+  const dispatch = useDispatch();
   const activeCalls = useAppSelector((s) => Object.values(s.calls.activeCalls));
   const [stats, setStats] = useState<Stats | null>(null);
 
@@ -33,6 +36,25 @@ export default function Dashboard() {
     }, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Restore active calls on mount — Socket.IO events only fire for calls that
+  // start AFTER connection, so without this, a browser refresh during a call
+  // leaves the dashboard blank.
+  useEffect(() => {
+    api.get<Call[]>("/api/calls/active").then((r) => {
+      for (const call of r.data) {
+        dispatch(
+          callStarted({
+            callSid: call.call_sid,
+            patientPhone: "",
+            patientName: call.patient_name,
+            agent: call.current_agent,
+            startedAt: call.started_at,
+          }),
+        );
+      }
+    }).catch(() => {});
+  }, [dispatch]);
 
   useEffect(() => {
     if (showCallForm) searchRef.current?.focus();

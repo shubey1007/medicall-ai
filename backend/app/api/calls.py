@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -29,11 +29,32 @@ class InitiateCallResponse(BaseModel):
 router = APIRouter(prefix="/api/calls", tags=["calls"])
 
 
+# Simple per-phone debounce — caches last initiate timestamp so double-clicks
+# don't result in two outbound calls. 30 s window is long enough to cover a
+# hasty second click, short enough that a legitimate retry after a failure
+# isn't blocked forever.
+_CALL_INITIATE_DEBOUNCE_SECONDS = 30
+_recent_call_attempts: dict[str, datetime] = {}
+
+
 @router.post("/initiate", response_model=InitiateCallResponse, status_code=202)
 async def initiate_call(payload: InitiateCallRequest) -> InitiateCallResponse:
     """Place an outbound call from the Twilio number to the given phone number.
     Twilio will call the number and connect it to the AI agent pipeline.
     """
+    # Debounce accidental double-submits / rapid retries for the same number
+    now = datetime.now(timezone.utc)
+    last = _recent_call_attempts.get(payload.to_phone)
+    if last and (now - last).total_seconds() < _CALL_INITIATE_DEBOUNCE_SECONDS:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"A call to {payload.to_phone} was just initiated. "
+                f"Please wait {_CALL_INITIATE_DEBOUNCE_SECONDS}s before retrying."
+            ),
+        )
+    _recent_call_attempts[payload.to_phone] = now
+
     twiml_url = f"{get_effective('twilio_webhook_url').rstrip('/')}/twilio/outbound-twiml"
     account_sid = get_effective("twilio_account_sid")
     auth_token = get_effective("twilio_auth_token")
@@ -57,6 +78,35 @@ async def initiate_call(payload: InitiateCallRequest) -> InitiateCallResponse:
 
     logger.info("outbound_call_initiated", call_sid=call_sid, to_phone=payload.to_phone)
     return InitiateCallResponse(call_sid=call_sid, to_phone=payload.to_phone, status="initiating")
+
+
+@router.get("/active", response_model=list[CallOut])
+async def list_active_calls(db: AsyncSession = Depends(get_db)) -> list[CallOut]:
+    """Return calls currently in RINGING or ACTIVE state.
+
+    Used by the dashboard to restore its "active calls" panel after a browser
+    refresh — otherwise the dashboard only sees calls that arrive via Socket.IO
+    after mount, and any call in progress when the page loads is invisible.
+    """
+    result = await db.execute(
+        select(Call)
+        .where(Call.status.in_([CallStatus.RINGING, CallStatus.ACTIVE]))
+        .options(
+            selectinload(Call.patient),
+            selectinload(Call.summary),
+        )
+        .order_by(Call.started_at.desc())
+    )
+    calls = result.scalars().all()
+    items: list[CallOut] = []
+    for call in calls:
+        out = CallOut.model_validate(call)
+        out.patient_name = call.patient.name if call.patient else None
+        out.urgency_level = (
+            call.summary.urgency_level.value.lower() if call.summary else None
+        )
+        items.append(out)
+    return items
 
 
 @router.get("", response_model=PaginatedResponse[CallOut])
