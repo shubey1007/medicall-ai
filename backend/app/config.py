@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     # Emergency
     oncall_phone_number: str = ""
 
+    # Clinic — IANA timezone name (e.g. America/New_York, Asia/Kolkata).
+    # Used to render scheduled_at in human-readable form for patient-facing
+    # communications (Vapi reminder calls, SMS).
+    clinic_timezone: str = "Asia/Kolkata"
+
+    # Security
+    # If True, Twilio webhook signature validation is skipped. Only enable this
+    # temporarily for local testing without real Twilio. In production/staging
+    # this MUST be False.
+    twilio_skip_signature_validation: bool = False
+
     # Google Sheets (optional)
     google_sheets_credentials_json: str = ""
     google_sheets_spreadsheet_id: str = ""

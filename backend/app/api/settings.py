@@ -5,7 +5,9 @@ PUT  /api/settings        → bulk upsert, refresh in-memory cache
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import uuid as _uuid
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -16,6 +18,15 @@ from app.models.app_setting import AppSetting
 from app.services import settings_svc
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+# Keys whose values must never leave the backend in plaintext.
+_SECRET_KEYS: set[str] = {
+    "openai_api_key",
+    "twilio_auth_token",
+    "qdrant_api_key",
+    "vapi_api_key",
+    "google_sheets_credentials_json",
+}
 
 # All configurable keys with their env-var fallback name (same as Settings field name).
 ALL_KEYS: list[str] = [
@@ -37,6 +48,8 @@ ALL_KEYS: list[str] = [
     "qdrant_api_key",
     # Notifications / Emergency
     "oncall_phone_number",
+    # Clinic
+    "clinic_timezone",
     # Google Sheets (optional)
     "google_sheets_credentials_json",
     "google_sheets_spreadsheet_id",
@@ -49,10 +62,15 @@ class SettingsPayload(BaseModel):
 
 @router.get("")
 async def get_settings_endpoint(db: AsyncSession = Depends(get_db)) -> dict:
-    """Return every setting with its effective value and source (db|env|unset).
+    """Return every setting with metadata.
 
-    Values are returned as-is (no masking). The dashboard is an admin UI and
-    client-side password inputs provide the UX-level hiding for secrets.
+    - source: "db" | "env" | "unset"
+    - is_set: True if there's an effective value (from DB or .env)
+    - value: actual value for non-secrets; "" for secrets (never leave the backend)
+
+    Secret fields are deliberately redacted so this endpoint is safe to expose
+    on the public ngrok tunnel that Twilio/Vapi hit. The UI uses is_set + source
+    to render "already configured — type to replace".
     """
     from app.config import get_settings
 
@@ -73,9 +91,37 @@ async def get_settings_endpoint(db: AsyncSession = Depends(get_db)) -> dict:
         else:
             source, value = "unset", ""
 
-        out[key] = {"value": value, "source": source}
+        is_set = bool(value)
+        # Redact secrets — never expose plaintext over HTTP
+        if key in _SECRET_KEYS:
+            value = ""
+
+        out[key] = {"value": value, "source": source, "is_set": is_set}
 
     return out
+
+
+def _validate_payload(filtered: dict[str, str]) -> None:
+    """Format checks. Raises HTTPException(400) on bad input."""
+    # vapi_phone_number_id must be a UUID when set (Vapi API requires this)
+    pid = filtered.get("vapi_phone_number_id", "").strip()
+    if pid:
+        try:
+            _uuid.UUID(pid)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="vapi_phone_number_id must be a valid UUID (copy it from the Vapi dashboard — not a phone number).",
+            )
+
+    # URL fields — very light sanity check
+    for url_key in ("twilio_webhook_url", "public_url", "qdrant_url"):
+        v = filtered.get(url_key, "").strip()
+        if v and not (v.startswith("http://") or v.startswith("https://")):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{url_key} must start with http:// or https://",
+            )
 
 
 @router.put("")
@@ -85,10 +131,22 @@ async def update_settings(
 ) -> dict:
     """Upsert settings into the database and refresh in-memory cache.
 
-    Pass empty string for a key to clear the DB override (falls back to .env).
+    For secret keys: an empty string in the payload is treated as "no change"
+    (so the UI can safely omit or leave the secret input blank to preserve
+    the existing value). For non-secret keys, empty string clears the DB
+    override and reverts to .env fallback.
     """
     # Only allow whitelisted keys
-    filtered = {k: v for k, v in payload.settings.items() if k in ALL_KEYS}
+    filtered: dict[str, str] = {}
+    for k, v in payload.settings.items():
+        if k not in ALL_KEYS:
+            continue
+        # Secret + empty value → do nothing (preserve existing)
+        if k in _SECRET_KEYS and not v:
+            continue
+        filtered[k] = v
+
+    _validate_payload(filtered)
 
     if filtered:
         # PostgreSQL UPSERT
@@ -102,7 +160,7 @@ async def update_settings(
         await db.execute(stmt)
         await db.commit()
 
-        # Refresh in-memory cache
+        # Refresh in-memory cache (and reconfigure dependent services)
         settings_svc.refresh(filtered)
 
     return {"saved": list(filtered.keys())}

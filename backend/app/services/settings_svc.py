@@ -36,7 +36,9 @@ def refresh(new_values: dict[str, str]) -> None:
     """Update in-memory cache after a settings save (call from PUT handler).
 
     Also invalidates cached client singletons (e.g. Qdrant, OpenAI embedding
-    client) so the next call rebuilds them against the new credentials.
+    client) so the next call rebuilds them against the new credentials. If
+    Qdrant-related keys changed, asynchronously re-runs ensure_collections()
+    so the `_qdrant_available` flag flips on without requiring a restart.
     """
     for k, v in new_values.items():
         if v:
@@ -51,6 +53,18 @@ def refresh(new_values: dict[str, str]) -> None:
 
         qdrant_svc._client = None
         qdrant_svc._oai_client = None
+
+        # If Qdrant credentials were touched, retry initialisation so the
+        # availability flag flips on (previously stuck at startup value).
+        if any(k in new_values for k in ("qdrant_url", "qdrant_api_key", "openai_api_key")):
+            import asyncio
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(qdrant_svc.ensure_collections())
+            except RuntimeError:
+                # No running event loop — skip (e.g. during tests)
+                pass
     except Exception:
         pass
 

@@ -17,8 +17,9 @@ interface AdminProfile {
 }
 
 interface SettingMeta {
-  value: string;
+  value: string;               // actual value for non-secrets; "" for secrets (redacted)
   source: "db" | "env" | "unset";
+  is_set: boolean;             // true if a value exists (from DB or .env)
 }
 
 // ─── Credential groups displayed in the UI ────────────────────────────────────
@@ -62,7 +63,11 @@ const CREDENTIAL_GROUPS: CredentialGroup[] = [
     icon: "🎙️",
     fields: [
       { key: "vapi_api_key", label: "API Key", placeholder: "vapi_...", secret: true },
-      { key: "vapi_phone_number_id", label: "Phone Number ID", placeholder: "uuid" },
+      {
+        key: "vapi_phone_number_id",
+        label: "Phone Number ID (UUID, not the phone number)",
+        placeholder: "e.g. 01234567-89ab-cdef-0123-456789abcdef",
+      },
       { key: "public_url", label: "Public URL (ngrok)", placeholder: "https://your-ngrok.ngrok.io" },
     ],
   },
@@ -79,6 +84,17 @@ const CREDENTIAL_GROUPS: CredentialGroup[] = [
     icon: "🚨",
     fields: [
       { key: "oncall_phone_number", label: "On-Call Phone Number", placeholder: "+1234567890" },
+    ],
+  },
+  {
+    title: "Clinic",
+    icon: "🏥",
+    fields: [
+      {
+        key: "clinic_timezone",
+        label: "Clinic Timezone (IANA)",
+        placeholder: "Asia/Kolkata · America/New_York · Europe/London",
+      },
     ],
   },
   {
@@ -121,12 +137,14 @@ export default function Settings() {
   const [profileSaved, setProfileSaved] = useState(false);
 
   // Credentials state
-  //   originals: last saved value (from backend) per key — baseline for "dirty" check
+  //   originals: last saved value from backend per key (for dirty check)
   //   values:    current content of each input field
   //   sources:   where each value came from (db | env | unset)
+  //   setFlags:  whether the backend reports the key as already configured
   const [originals, setOriginals] = useState<Record<string, string>>({});
   const [values, setValues] = useState<Record<string, string>>({});
   const [sources, setSources] = useState<Record<string, "db" | "env" | "unset">>({});
+  const [setFlags, setSetFlags] = useState<Record<string, boolean>>({});
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [savingGroup, setSavingGroup] = useState<string | null>(null);
   const [savedGroup, setSavedGroup] = useState<string | null>(null);
@@ -137,13 +155,16 @@ export default function Settings() {
       const res = await api.get<Record<string, SettingMeta>>("/api/settings");
       const vals: Record<string, string> = {};
       const srcs: Record<string, "db" | "env" | "unset"> = {};
+      const flags: Record<string, boolean> = {};
       for (const [key, meta] of Object.entries(res.data)) {
         vals[key] = meta.value;
         srcs[key] = meta.source;
+        flags[key] = meta.is_set;
       }
       setOriginals(vals);
       setValues(vals);
       setSources(srcs);
+      setSetFlags(flags);
     } catch {
       // backend may not be running; silently skip
     }
@@ -166,12 +187,16 @@ export default function Settings() {
     setSavingGroup(group.title);
     setCredError("");
     try {
-      // Only send fields whose current value differs from the last saved value
       const payload: Record<string, string> = {};
       for (const field of group.fields) {
         const current = values[field.key] ?? "";
         const original = originals[field.key] ?? "";
-        if (current !== original) {
+        // For secrets: original is always "" (backend redacts). Only send when
+        // the user actually typed something. Empty input for a secret means
+        // "keep existing".
+        if (field.secret) {
+          if (current.trim()) payload[field.key] = current;
+        } else if (current !== original) {
           payload[field.key] = current;
         }
       }
@@ -180,20 +205,35 @@ export default function Settings() {
         return;
       }
       await api.put("/api/settings", { settings: payload });
+      // Clear secret inputs after save (otherwise they'd show what was just entered)
+      setValues((prev) => {
+        const next = { ...prev };
+        for (const field of group.fields) {
+          if (field.secret) next[field.key] = "";
+        }
+        return next;
+      });
       await loadSettings();
       setSavedGroup(group.title);
       setTimeout(() => setSavedGroup(null), 2500);
-    } catch {
-      setCredError(`Failed to save ${group.title} settings.`);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        `Failed to save ${group.title} settings.`;
+      setCredError(msg);
     } finally {
       setSavingGroup(null);
     }
   }
 
   function isDirty(group: CredentialGroup): boolean {
-    return group.fields.some(
-      (f) => (values[f.key] ?? "") !== (originals[f.key] ?? ""),
-    );
+    return group.fields.some((f) => {
+      const cur = values[f.key] ?? "";
+      const orig = originals[f.key] ?? "";
+      // Secret fields: dirty only when the user has typed new text
+      if (f.secret) return cur.trim() !== "";
+      return cur !== orig;
+    });
   }
 
   function toggleVisibility(key: string) {
@@ -321,8 +361,17 @@ export default function Settings() {
                 <div className="space-y-3">
                   {group.fields.map((field) => {
                     const source = sources[field.key] ?? "unset";
+                    const isSet = setFlags[field.key] ?? false;
                     const isVisible = visibleKeys.has(field.key);
                     const inputType = field.secret && !isVisible ? "password" : "text";
+
+                    // For secrets, the backend never sends the value. Placeholder
+                    // communicates whether it's configured.
+                    const placeholder = field.secret
+                      ? (isSet
+                          ? "●●●●●●●●●● — already configured, type to replace"
+                          : (field.placeholder ?? "Enter value..."))
+                      : (field.placeholder ?? "");
 
                     return (
                       <div key={field.key}>
@@ -341,7 +390,7 @@ export default function Settings() {
                               onChange={(e) =>
                                 setValues((prev) => ({ ...prev, [field.key]: e.target.value }))
                               }
-                              placeholder={field.placeholder}
+                              placeholder={placeholder}
                               className="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono resize-none"
                             />
                           ) : (
@@ -351,12 +400,12 @@ export default function Settings() {
                               onChange={(e) =>
                                 setValues((prev) => ({ ...prev, [field.key]: e.target.value }))
                               }
-                              placeholder={field.placeholder}
+                              placeholder={placeholder}
                               autoComplete={field.secret ? "new-password" : "off"}
                               className="w-full border border-slate-300 rounded px-3 py-2 text-sm pr-16"
                             />
                           )}
-                          {field.secret && !field.multiline && (
+                          {field.secret && !field.multiline && (values[field.key] ?? "") !== "" && (
                             <button
                               type="button"
                               onClick={() => toggleVisibility(field.key)}
