@@ -10,6 +10,7 @@ from twilio.twiml.voice_response import Connect, VoiceResponse
 from app.config import get_settings
 from app.database import get_db
 from app.models import Call, CallStatus, Patient
+from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger, mask_phone
 
 logger = get_logger(__name__)
@@ -17,19 +18,18 @@ router = APIRouter(tags=["twilio"])
 
 
 async def _validate_twilio_signature(request: Request) -> None:
-    settings = get_settings()
-    if settings.environment != "production":
+    if get_settings().environment != "production":
         return
 
     signature = request.headers.get("X-Twilio-Signature", "")
     form = await request.form()
 
-    base = settings.twilio_webhook_url.rstrip("/")
+    base = get_effective("twilio_webhook_url").rstrip("/")
     url = f"{base}{request.url.path}"
     if request.url.query:
         url = f"{url}?{request.url.query}"
 
-    validator = RequestValidator(settings.twilio_auth_token)
+    validator = RequestValidator(get_effective("twilio_auth_token"))
     if not validator.validate(url, dict(form), signature):
         raise HTTPException(status_code=403, detail="Invalid Twilio signature")
 
@@ -70,7 +70,7 @@ async def twilio_incoming(
     )
 
     # Build TwiML with Stream to our WS endpoint
-    host = urlparse(get_settings().twilio_webhook_url).netloc
+    host = urlparse(get_effective("twilio_webhook_url")).netloc
     ws_url = f"wss://{host}/media-stream"
 
     response = VoiceResponse()
@@ -121,7 +121,7 @@ async def twilio_outbound_twiml(
         db_call_id=str(call.id),
     )
 
-    host = urlparse(get_settings().twilio_webhook_url).netloc
+    host = urlparse(get_effective("twilio_webhook_url")).netloc
     ws_url = f"wss://{host}/media-stream"
 
     response = VoiceResponse()

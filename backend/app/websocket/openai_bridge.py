@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import ConnectionClosed
 
-from app.config import get_settings
 from app.models import TranscriptRole
+from app.services.settings_svc import get_effective
 from app.services.transcript_svc import transcript_service
 from app.utils.logger import get_logger
 from app.websocket import dashboard_ws
@@ -48,10 +48,10 @@ class OpenAIRealtimeBridge:
         self._current_agent: "BaseAgent | None" = None
 
     async def connect(self, initial_agent: "BaseAgent") -> None:
-        settings = get_settings()
-        url = f"{OAI_RT_URL}?model={settings.openai_realtime_model}"
+        model = get_effective("openai_realtime_model") or "gpt-4o-realtime-preview"
+        url = f"{OAI_RT_URL}?model={model}"
         headers = {
-            "Authorization": f"Bearer {settings.openai_api_key}",
+            "Authorization": f"Bearer {get_effective('openai_api_key')}",
             "OpenAI-Beta": "realtime=v1",
         }
         # Use the asyncio client explicitly — websockets 13.x routes the top-level

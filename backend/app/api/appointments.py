@@ -6,8 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import get_settings
 from app.database import get_db
+from app.services.settings_svc import get_effective
 from app.models import Appointment, AppointmentStatus
 from app.schemas import (
     AppointmentCreate,
@@ -114,8 +114,9 @@ async def send_appointment_reminder(
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    settings = get_settings()
-    if not settings.vapi_api_key or not settings.vapi_phone_number_id:
+    vapi_api_key = get_effective("vapi_api_key")
+    vapi_phone_number_id = get_effective("vapi_phone_number_id")
+    if not vapi_api_key or not vapi_phone_number_id:
         return {"status": "skipped", "reason": "Vapi not fully configured (missing VAPI_API_KEY or VAPI_PHONE_NUMBER_ID)"}
 
     patient_phone = appt.patient.phone if appt.patient else None
@@ -125,7 +126,7 @@ async def send_appointment_reminder(
     scheduled = appt.scheduled_at.strftime("%A, %B %d at %I:%M %p")
 
     payload = {
-        "phoneNumberId": settings.vapi_phone_number_id,
+        "phoneNumberId": vapi_phone_number_id,
         "customer": {"number": patient_phone},
         "assistant": {
             "name": "MediCall Reminder",
@@ -155,7 +156,7 @@ async def send_appointment_reminder(
             resp = await client.post(
                 "https://api.vapi.ai/call/phone",
                 headers={
-                    "Authorization": f"Bearer {settings.vapi_api_key}",
+                    "Authorization": f"Bearer {vapi_api_key}",
                     "Content-Type": "application/json",
                 },
                 json=payload,

@@ -3,8 +3,8 @@ import asyncio
 
 from twilio.rest import Client as TwilioClient
 
-from app.config import get_settings
 from app.models import CallSummary
+from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger, mask_phone
 
 logger = get_logger(__name__)
@@ -12,8 +12,6 @@ logger = get_logger(__name__)
 
 async def send_post_call_sms(patient_phone: str, summary: CallSummary) -> bool:
     """Send a brief summary SMS to the patient. Returns True on success."""
-    settings = get_settings()
-
     body_lines = [
         "MediCall summary of your call:",
         summary.summary_text,
@@ -29,11 +27,14 @@ async def send_post_call_sms(patient_phone: str, summary: CallSummary) -> bool:
     body = "\n".join(body_lines)
 
     try:
-        client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
+        client = TwilioClient(
+            get_effective("twilio_account_sid"),
+            get_effective("twilio_auth_token"),
+        )
         await asyncio.to_thread(
             client.messages.create,
             body=body[:1600],
-            from_=settings.twilio_phone_number,
+            from_=get_effective("twilio_phone_number"),
             to=patient_phone,
         )
         logger.info("post_call_sms_sent", to=mask_phone(patient_phone))

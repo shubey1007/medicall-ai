@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from twilio.rest import Client as TwilioClient
 
 from app.agents.base import BaseAgent, END_CALL_TOOL, ROUTE_TO_AGENT_TOOL
-from app.config import get_settings
+from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -73,8 +73,8 @@ class EmergencyAgent(BaseAgent):
             return {"status": "routing", "target": arguments.get("agent_name")}
 
         if tool_name == "trigger_emergency_alert":
-            settings = get_settings()
-            if not settings.oncall_phone_number:
+            oncall = get_effective("oncall_phone_number")
+            if not oncall:
                 logger.warning("emergency_alert_skipped", reason="no_oncall_number")
                 return {"status": "noop", "reason": "No on-call number configured"}
 
@@ -89,17 +89,20 @@ class EmergencyAgent(BaseAgent):
             )
 
             try:
-                client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
+                client = TwilioClient(
+                    get_effective("twilio_account_sid"),
+                    get_effective("twilio_auth_token"),
+                )
                 await asyncio.to_thread(
                     client.messages.create,
                     body=body,
-                    from_=settings.twilio_phone_number,
-                    to=settings.oncall_phone_number,
+                    from_=get_effective("twilio_phone_number"),
+                    to=oncall,
                 )
                 logger.info(
                     "emergency_alert_sent",
                     call_sid=session.call_sid,
-                    to=settings.oncall_phone_number,
+                    to=oncall,
                 )
                 return {"status": "alert_sent", "notified": settings.oncall_phone_number}
             except Exception as exc:

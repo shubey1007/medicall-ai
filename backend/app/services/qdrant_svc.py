@@ -20,7 +20,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from app.config import get_settings
+from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -41,12 +41,12 @@ _qdrant_available: bool = False
 def get_client() -> AsyncQdrantClient:
     global _client
     if _client is None:
-        settings = get_settings()
-        if not settings.qdrant_url:
+        url = get_effective("qdrant_url")
+        if not url:
             raise RuntimeError("QDRANT_URL is not configured")
         _client = AsyncQdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key or None,
+            url=url,
+            api_key=get_effective("qdrant_api_key") or None,
         )
     return _client
 
@@ -54,8 +54,7 @@ def get_client() -> AsyncQdrantClient:
 def get_oai_client() -> AsyncOpenAI:
     global _oai_client
     if _oai_client is None:
-        settings = get_settings()
-        _oai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+        _oai_client = AsyncOpenAI(api_key=get_effective("openai_api_key"))
     return _oai_client
 
 
@@ -70,8 +69,7 @@ async def close_client() -> None:
 async def ensure_collections() -> None:
     """Create Qdrant collections if they don't exist. Called at app startup."""
     global _qdrant_available
-    settings = get_settings()
-    if not settings.qdrant_url:
+    if not get_effective("qdrant_url"):
         logger.warning("qdrant_not_configured", reason="QDRANT_URL not set")
         _qdrant_available = False
         return

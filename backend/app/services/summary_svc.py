@@ -8,10 +8,10 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.config import get_settings
 from app.database import db_session
 from app.models import Call, CallSummary, UrgencyLevel
 from app.services import memory_svc
+from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -37,8 +37,6 @@ Urgency rubric:
 
 async def generate_summary(call_id: uuid.UUID) -> CallSummary | None:
     """Fetch transcript, call OpenAI, save CallSummary to DB."""
-    settings = get_settings()
-
     async with db_session() as db:
         result = await db.execute(
             select(Call)
@@ -61,10 +59,10 @@ async def generate_summary(call_id: uuid.UUID) -> CallSummary | None:
         # Capture patient_id while session is still open (avoids DetachedInstanceError)
         patient_id = call.patient_id
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=get_effective("openai_api_key"))
     try:
         response = await client.chat.completions.create(
-            model=settings.post_call_summary_model,
+            model=get_effective("post_call_summary_model") or "gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Transcript:\n{transcript}"},

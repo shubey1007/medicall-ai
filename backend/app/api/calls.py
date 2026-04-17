@@ -8,8 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import get_settings
 from app.database import get_db
+from app.services.settings_svc import get_effective
 from app.models import Call, CallStatus, CallSummary, TranscriptEntry, UrgencyLevel
 from app.schemas import CallDetailOut, CallOut, PaginatedResponse, TranscriptEntryOut
 from app.utils.logger import get_logger
@@ -34,15 +34,17 @@ async def initiate_call(payload: InitiateCallRequest) -> InitiateCallResponse:
     """Place an outbound call from the Twilio number to the given phone number.
     Twilio will call the number and connect it to the AI agent pipeline.
     """
-    settings = get_settings()
-    twiml_url = f"{settings.twilio_webhook_url.rstrip('/')}/twilio/outbound-twiml"
+    twiml_url = f"{get_effective('twilio_webhook_url').rstrip('/')}/twilio/outbound-twiml"
+    account_sid = get_effective("twilio_account_sid")
+    auth_token = get_effective("twilio_auth_token")
+    from_number = get_effective("twilio_phone_number")
 
     def _create_twilio_call() -> str:
         from twilio.rest import Client
-        client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
+        client = Client(account_sid, auth_token)
         call = client.calls.create(
             to=payload.to_phone,
-            from_=settings.twilio_phone_number,
+            from_=from_number,
             url=twiml_url,
         )
         return call.sid

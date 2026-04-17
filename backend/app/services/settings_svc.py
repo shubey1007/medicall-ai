@@ -33,12 +33,26 @@ async def load_from_db(session: AsyncSession) -> None:
 
 
 def refresh(new_values: dict[str, str]) -> None:
-    """Update in-memory cache after a settings save (call from PUT handler)."""
+    """Update in-memory cache after a settings save (call from PUT handler).
+
+    Also invalidates cached client singletons (e.g. Qdrant, OpenAI embedding
+    client) so the next call rebuilds them against the new credentials.
+    """
     for k, v in new_values.items():
         if v:
             _db_override[k] = v
         else:
             _db_override.pop(k, None)
+
+    # Invalidate singletons whose creds may have changed.
+    # Late import to avoid circular dependency (qdrant_svc imports this module).
+    try:
+        from app.services import qdrant_svc
+
+        qdrant_svc._client = None
+        qdrant_svc._oai_client = None
+    except Exception:
+        pass
 
 
 def get_effective(key: str) -> str:

@@ -7,8 +7,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.config import get_settings
 from app.database import db_session
+from app.services.settings_svc import get_effective
 from app.models import Call
 from app.utils.logger import get_logger, mask_phone
 
@@ -39,8 +39,9 @@ def _sync_push(creds_info: dict, spreadsheet_id: str, row: list[str]) -> None:
 
 async def push_call_summary(call_id: uuid.UUID) -> bool:
     """Push a single call's summary to the configured sheet. Returns True on success."""
-    settings = get_settings()
-    if not settings.google_sheets_enabled:
+    creds_json = get_effective("google_sheets_credentials_json")
+    spreadsheet_id = get_effective("google_sheets_spreadsheet_id")
+    if not creds_json or not spreadsheet_id:
         logger.debug("sheets_sync_skipped", reason="not_configured")
         return False
 
@@ -84,8 +85,8 @@ async def push_call_summary(call_id: uuid.UUID) -> bool:
         ]
 
     try:
-        creds_info: dict[str, Any] = json.loads(settings.google_sheets_credentials_json)
-        await asyncio.to_thread(_sync_push, creds_info, settings.google_sheets_spreadsheet_id, row)
+        creds_info: dict[str, Any] = json.loads(creds_json)
+        await asyncio.to_thread(_sync_push, creds_info, spreadsheet_id, row)
         logger.info("sheets_sync_pushed", call_id=str(call_id))
         return True
     except Exception as exc:

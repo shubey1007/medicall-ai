@@ -13,8 +13,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.config import get_settings
 from app.database import db_session
+from app.services.settings_svc import get_effective
 from app.models import Call, CallStatus, Patient, TranscriptRole
 from app.services.call_manager import CallSession, call_manager
 from app.services.notification_svc import send_post_call_sms
@@ -157,12 +157,11 @@ async def media_stream(websocket: WebSocket) -> None:
                             await asyncio.sleep(6)
                             try:
                                 from twilio.rest import Client as TwilioClient
-                                _settings = get_settings()
 
                                 def _hang() -> None:
                                     TwilioClient(
-                                        _settings.twilio_account_sid,
-                                        _settings.twilio_auth_token,
+                                        get_effective("twilio_account_sid"),
+                                        get_effective("twilio_auth_token"),
                                     ).calls(_sid).update(status="completed")
 
                                 await asyncio.to_thread(_hang)

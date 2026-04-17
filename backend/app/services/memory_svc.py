@@ -8,8 +8,8 @@ import uuid
 
 from openai import AsyncOpenAI
 
-from app.config import get_settings
 from app.services.qdrant_svc import upsert_patient_memory
+from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -56,13 +56,12 @@ async def consolidate(
         logger.debug("memory_consolidation_skipped", reason="no_patient_id")
         return
 
-    settings = get_settings()
-    if not settings.qdrant_url:
+    if not get_effective("qdrant_url"):
         logger.debug("memory_consolidation_skipped", reason="qdrant_not_configured")
         return
 
     try:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = AsyncOpenAI(api_key=get_effective("openai_api_key"))
         resp = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[

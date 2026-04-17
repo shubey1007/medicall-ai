@@ -6,7 +6,7 @@ We respond with assistant config on 'assistant-request' events.
 from typing import Any
 
 from app.agents.triage import TriageAgent
-from app.config import get_settings
+from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,8 +20,7 @@ def build_assistant_config(patient_name: str | None = None) -> dict[str, Any]:
     if patient_name:
         system_prompt = f"The patient's name is {patient_name}.\n\n{system_prompt}"
 
-    settings = get_settings()
-    server_url = settings.public_url
+    server_url = get_effective("public_url")
 
     return {
         "assistant": {
