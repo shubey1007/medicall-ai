@@ -67,13 +67,23 @@ class TriageAgent(BaseAgent):
             {
                 "type": "function",
                 "name": "lookup_patient",
-                "description": "Look up patient medical history by phone number.",
+                "description": (
+                    "Look up a patient by phone number or name. "
+                    "Provide 'phone' (digits only, no spaces/dashes/country code) OR 'name'. "
+                    "Try phone first; if not found, try name."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "phone": {"type": "string"},
+                        "phone": {
+                            "type": "string",
+                            "description": "Digits only — strip spaces, dashes, country codes (+91, 0091, leading 0).",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Patient's full or partial name as spoken.",
+                        },
                     },
-                    "required": ["phone"],
                 },
             },
             {
@@ -156,12 +166,47 @@ class TriageAgent(BaseAgent):
             }
 
         if tool_name == "lookup_patient":
-            phone = arguments.get("phone", session.patient_phone)
+            import re
+            from sqlalchemy import func
+
+            def _normalize(raw: str) -> str:
+                """Strip non-digits, drop leading country codes."""
+                digits = re.sub(r"\D", "", raw)
+                # Drop +91 / 0091 prefix, or a leading 0 before 10 digits
+                if digits.startswith("91") and len(digits) == 12:
+                    digits = digits[2:]
+                elif digits.startswith("0091") and len(digits) == 14:
+                    digits = digits[4:]
+                elif digits.startswith("0") and len(digits) == 11:
+                    digits = digits[1:]
+                return digits
+
+            raw_phone = arguments.get("phone") or session.patient_phone
+            name_query = arguments.get("name", "").strip()
+
             async with db_session() as db:
-                result = await db.execute(select(Patient).where(Patient.phone == phone))
-                patient = result.scalar_one_or_none()
+                patient = None
+
+                # 1. Try phone match (exact suffix — handles stored formats like +91XXXXXXXXXX)
+                if raw_phone and raw_phone not in ("unknown", "vapi-demo"):
+                    normalized = _normalize(raw_phone)
+                    if normalized:
+                        result = await db.execute(
+                            select(Patient).where(Patient.phone.like(f"%{normalized}"))
+                        )
+                        patient = result.scalar_one_or_none()
+
+                # 2. Fall back to name search
+                if patient is None and name_query:
+                    result = await db.execute(
+                        select(Patient).where(
+                            func.lower(Patient.name).contains(name_query.lower())
+                        )
+                    )
+                    patient = result.scalar_one_or_none()
+
                 if not patient:
-                    return {"found": False}
+                    return {"found": False, "message": "Patient not found by phone or name."}
                 return {
                     "found": True,
                     "name": patient.name,

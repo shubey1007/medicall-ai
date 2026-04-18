@@ -52,6 +52,9 @@ services:
     container_name: medicall-dashboard
     ports:
       - "5173:5173"
+    environment:
+      VITE_API_URL: https://shubey.in
+      VITE_SOCKET_URL: https://shubey.in
     volumes:
       - ./dashboard:/app
       - /app/node_modules

@@ -25,14 +25,25 @@ from app.utils.prompt_builder import build_clinic_context
 logger = get_logger(__name__)
 
 
-MULTI_ROLE_PROMPT = f"""You are MediCall AI — a single voice assistant that plays four roles for a clinic:
+MULTI_ROLE_PROMPT = f"""You are MediCall AI — a voice assistant for a medical clinic.
 
-1. Triage (default): greet, collect main symptom, assess urgency (1-10).
-2. Scheduling: book / reschedule / cancel appointments. Available doctors: Dr. Smith (cardiology), Dr. Patel (general), Dr. Johnson (pediatrics). Hours Mon-Fri 9am-5pm.
+ROLES (switch silently based on what the patient needs):
+1. Triage (default): greet, collect main symptom, onset, severity 1-10, assess urgency.
+2. Scheduling: book / reschedule / cancel appointments. Doctors: Dr. Smith (cardiology), Dr. Patel (general), Dr. Johnson (pediatrics). Hours Mon-Fri 9am-5pm.
 3. Medication: general info on well-known medications only. NEVER prescribe, suggest doses, or diagnose.
-4. Emergency: chest pain, breathing trouble, stroke signs, severe bleeding, unconscious. Tell patient to call 911. Use trigger_emergency_alert.
+4. Emergency: chest pain, breathing trouble, stroke signs, severe bleeding, unconscious → tell patient to call 911 immediately. Use trigger_emergency_alert.
 
-Pick the role based on what the patient wants. Don't announce the switch.
+PATIENT IDENTIFICATION — do this early in every call:
+- If you already know the caller's phone number (provided in context), call lookup_patient with that number immediately.
+- If the patient mentions their phone number, extract the digits, strip all spaces/dashes/country-code prefixes, and call lookup_patient. Example: "nine eight seven six" → "9876".
+- If phone lookup returns not found, ask for their name and call lookup_patient with the name instead.
+- If neither works, proceed as a new patient — collect their name and reason for calling.
+- NEVER ask for date of birth or ID — phone or name is enough.
+
+PHONE NUMBER PARSING RULES:
+- Words to digits: zero=0, one=1, two=2, three=3, four=4, five=5, six=6, seven=7, eight=8, nine=9.
+- Strip leading country codes: +91, 0091, or a leading 0 before 10 digits (Indian numbers).
+- Remove all spaces, dashes, and parentheses before calling lookup_patient.
 
 Always respond in English. Never diagnose. Never prescribe.
 Call end_call when the patient has nothing left to ask.
@@ -72,6 +83,7 @@ async def _memory_block(patient_id: uuid.UUID | None) -> str:
 async def build_assistant_config(
     patient_name: str | None = None,
     patient_id: uuid.UUID | None = None,
+    caller_phone: str | None = None,
 ) -> dict[str, Any]:
     """Build dynamic Vapi assistant config for a new call."""
     prompt_parts: list[str] = []
@@ -89,6 +101,12 @@ async def build_assistant_config(
 
     if patient_name:
         prompt_parts.append(f"The patient's name is {patient_name}.")
+
+    if caller_phone:
+        prompt_parts.append(
+            f"The caller's phone number is {caller_phone}. "
+            f"Call lookup_patient with this number at the start of the call."
+        )
 
     prompt_parts.append(MULTI_ROLE_PROMPT)
     system_prompt = "\n\n".join(prompt_parts)
