@@ -7,11 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from twilio.request_validator import RequestValidator
 from twilio.twiml.voice_response import Connect, VoiceResponse
 
+from datetime import datetime, timezone
+
 from app.config import get_settings
-from app.database import get_db
-from app.models import Call, CallStatus, Patient
+from app.database import db_session, get_db
+from app.models import Call, CallStatus as CallStatusEnum, Patient
 from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger, mask_phone
+from app.websocket import dashboard_ws
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["twilio"])
@@ -22,10 +25,10 @@ async def _validate_twilio_signature(request: Request) -> None:
 
     Always validates when a Twilio auth token is configured. The previous
     behaviour — bypassing validation in any non-production env — left the
-    webhook publicly spoofable on the ngrok tunnel we use for local dev,
-    so anyone could forge /twilio/incoming requests and burn our OpenAI
-    and Twilio credits. To bypass intentionally (e.g. testing with no real
-    Twilio at all), set TWILIO_SKIP_SIGNATURE_VALIDATION=true in .env.
+    webhook publicly spoofable on the public tunnel, so anyone could forge
+    /twilio/incoming requests and burn OpenAI and Twilio credits. To bypass
+    intentionally (e.g. testing with no real Twilio at all), set
+    TWILIO_SKIP_SIGNATURE_VALIDATION=true in .env.
     """
     settings = get_settings()
     if settings.twilio_skip_signature_validation:
@@ -75,7 +78,7 @@ async def twilio_incoming(
     call = Call(
         call_sid=CallSid,
         patient_id=patient.id,
-        status=CallStatus.RINGING,
+        status=CallStatusEnum.RINGING,
         current_agent="triage",
     )
     db.add(call)
@@ -127,7 +130,7 @@ async def twilio_outbound_twiml(
     call = Call(
         call_sid=CallSid,
         patient_id=patient.id,
-        status=CallStatus.RINGING,
+        status=CallStatusEnum.RINGING,
         current_agent="triage",
     )
     db.add(call)
@@ -155,3 +158,36 @@ async def twilio_outbound_twiml(
     response.append(connect)
 
     return Response(content=str(response), media_type="application/xml")
+
+
+@router.post("/twilio/status-callback")
+async def twilio_status_callback(
+    request: Request,
+    CallSid: str = Form(...),
+    CallStatus: str = Form(...),  # Twilio's form field name
+) -> Response:
+    """Twilio calls this whenever a call's status changes (completed/failed/busy/no-answer).
+    This is the guaranteed cleanup path — fires even if the media-stream WS never connected.
+    """
+    twilio_status = CallStatus  # rename to avoid shadowing the enum below
+    terminal = {"completed", "failed", "busy", "no-answer", "canceled"}
+    if twilio_status.lower() not in terminal:
+        return Response(status_code=204)
+
+    logger.info("twilio_status_callback", call_sid=CallSid, status=twilio_status)
+
+    async with db_session() as db:
+        result = await db.execute(select(Call).where(Call.call_sid == CallSid))
+        call = result.scalar_one_or_none()
+        if call is None or call.status in (CallStatusEnum.COMPLETED, CallStatusEnum.FAILED):
+            return Response(status_code=204)
+
+        now = datetime.now(timezone.utc)
+        duration = int((now - call.started_at).total_seconds())
+        call.status = CallStatusEnum.COMPLETED if twilio_status.lower() == "completed" else CallStatusEnum.FAILED
+        call.ended_at = now
+        call.duration_seconds = duration
+        await db.commit()
+
+    await dashboard_ws.emit_call_ended({"callSid": CallSid, "duration": duration})
+    return Response(status_code=204)

@@ -55,7 +55,9 @@ async def initiate_call(payload: InitiateCallRequest) -> InitiateCallResponse:
         )
     _recent_call_attempts[payload.to_phone] = now
 
-    twiml_url = f"{get_effective('twilio_webhook_url').rstrip('/')}/twilio/outbound-twiml"
+    base_url = get_effective('twilio_webhook_url').rstrip('/')
+    twiml_url = f"{base_url}/twilio/outbound-twiml"
+    status_callback_url = f"{base_url}/twilio/status-callback"
     account_sid = get_effective("twilio_account_sid")
     auth_token = get_effective("twilio_auth_token")
     from_number = get_effective("twilio_phone_number")
@@ -67,6 +69,9 @@ async def initiate_call(payload: InitiateCallRequest) -> InitiateCallResponse:
             to=payload.to_phone,
             from_=from_number,
             url=twiml_url,
+            status_callback=status_callback_url,
+            status_callback_event=["completed", "failed", "busy", "no-answer"],
+            status_callback_method="POST",
         )
         return call.sid
 
@@ -80,14 +85,23 @@ async def initiate_call(payload: InitiateCallRequest) -> InitiateCallResponse:
     return InitiateCallResponse(call_sid=call_sid, to_phone=payload.to_phone, status="initiating")
 
 
+# Calls stuck in RINGING/ACTIVE beyond this threshold are considered dead.
+_STALE_CALL_MINUTES = 10
+
+
 @router.get("/active", response_model=list[CallOut])
 async def list_active_calls(db: AsyncSession = Depends(get_db)) -> list[CallOut]:
     """Return calls currently in RINGING or ACTIVE state.
 
-    Used by the dashboard to restore its "active calls" panel after a browser
-    refresh — otherwise the dashboard only sees calls that arrive via Socket.IO
-    after mount, and any call in progress when the page loads is invisible.
+    Any call that has been RINGING/ACTIVE for more than _STALE_CALL_MINUTES
+    is auto-marked FAILED here — this is a last-resort safety net for cases
+    where the Twilio/Vapi status callback was never received.
     """
+    from datetime import timedelta
+    from app.websocket import dashboard_ws
+
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=_STALE_CALL_MINUTES)
+
     result = await db.execute(
         select(Call)
         .where(Call.status.in_([CallStatus.RINGING, CallStatus.ACTIVE]))
@@ -98,8 +112,22 @@ async def list_active_calls(db: AsyncSession = Depends(get_db)) -> list[CallOut]
         .order_by(Call.started_at.desc())
     )
     calls = result.scalars().all()
+
+    # Auto-close stale calls
+    stale = [c for c in calls if c.started_at.replace(tzinfo=timezone.utc) < stale_cutoff]
+    if stale:
+        for c in stale:
+            c.status = CallStatus.FAILED
+            c.ended_at = datetime.now(timezone.utc)
+        await db.commit()
+        for c in stale:
+            await dashboard_ws.emit_call_ended({"callSid": c.call_sid, "duration": None})
+        logger.info("stale_calls_auto_closed", count=len(stale))
+
+    # Return only genuinely active calls
+    active = [c for c in calls if c not in stale]
     items: list[CallOut] = []
-    for call in calls:
+    for call in active:
         out = CallOut.model_validate(call)
         out.patient_name = call.patient.name if call.patient else None
         out.urgency_level = (
