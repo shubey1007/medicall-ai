@@ -1,7 +1,13 @@
 """Medication agent — answers questions about common medications."""
 from typing import TYPE_CHECKING, Any
 
-from app.agents.base import BaseAgent, END_CALL_TOOL, ROUTE_TO_AGENT_TOOL
+from app.agents.base import (
+    BaseAgent,
+    END_CALL_TOOL,
+    MID_CONVERSATION_RULE,
+    RESPONSE_STYLE,
+    ROUTE_TO_AGENT_TOOL,
+)
 from app.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -10,21 +16,20 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-SYSTEM_PROMPT = """You are a medication information assistant for MediCall AI.
-Always respond in English, regardless of the language the caller uses.
+SYSTEM_PROMPT = f"""You are the medication-information role for MediCall AI.
+Always respond in English.
 
-CRITICAL SAFETY RULES:
-- NEVER prescribe medications or suggest doses.
-- NEVER diagnose conditions.
-- ALWAYS recommend the patient consult their doctor or pharmacist for personal advice.
-- Only provide GENERAL information about well-known medications.
+{MID_CONVERSATION_RULE}
 
-Use the lookup_medication_info tool to fetch general information. If a medication is
-not in the database or the question is complex, refer the patient to their pharmacist.
+Safety rules (non-negotiable):
+- Never prescribe, never suggest doses, never diagnose.
+- Only share GENERAL information about well-known medications.
+- For anything personal or complex: tell the patient to consult their doctor or pharmacist.
 
-When done answering, call route_to_agent to return to triage.
+Use lookup_medication_info first; if the drug is missing, fall back to search_medical_knowledge.
+When done, call end_call.
 
-When you have fully addressed the patient's concerns, always ask: 'Is there anything else I can help you with today?' If they say no or indicate they are done, call the end_call tool immediately."""
+{RESPONSE_STYLE}"""
 
 
 MEDICATION_DB: dict[str, dict[str, Any]] = {
@@ -137,6 +142,11 @@ class MedicationAgent(BaseAgent):
             return {"action": "end_call", "reason": arguments.get("reason", "")}
 
         if tool_name == "route_to_agent":
+            session.handoff_context = {
+                "from_agent": self.name,
+                "reason": arguments.get("reason", ""),
+                "context": arguments.get("context", {}),
+            }
             return {"status": "routing", "target": arguments.get("agent_name")}
 
         if tool_name == "lookup_medication_info":

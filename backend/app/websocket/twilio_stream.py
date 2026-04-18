@@ -16,7 +16,9 @@ from sqlalchemy.orm import selectinload
 from app.database import db_session
 from app.services.settings_svc import get_effective
 from app.models import Call, CallStatus, Patient, TranscriptRole
+from app.models import TranscriptEntry
 from app.services.call_manager import CallSession, call_manager
+from app.services.memory_svc import consolidate as consolidate_memory
 from app.services.notification_svc import send_post_call_sms
 from app.services.sheets_sync import push_call_summary
 from app.services.summary_svc import generate_summary
@@ -271,6 +273,35 @@ async def _finalize_call(session: CallSession) -> None:
             summary = await generate_summary(session.db_call_id)
             if summary is None:
                 return
+
+            # Memory consolidation: extract key facts from the full transcript
+            # and upsert to Qdrant patient_memory. Isolated from the rest so
+            # a Qdrant outage can't poison summary/sheets/SMS.
+            try:
+                async with db_session() as db:
+                    rows = await db.execute(
+                        select(TranscriptEntry)
+                        .where(TranscriptEntry.call_id == session.db_call_id)
+                        .order_by(TranscriptEntry.timestamp.asc())
+                    )
+                    entries = rows.scalars().all()
+                    transcript_text = "\n".join(
+                        f"{e.role.value if hasattr(e.role, 'value') else e.role}: {e.content}"
+                        for e in entries
+                    )
+                if transcript_text.strip():
+                    await consolidate_memory(
+                        patient_id=session.patient_id,
+                        call_id=session.db_call_id,
+                        transcript_text=transcript_text,
+                    )
+            except Exception as exc:
+                logger.exception(
+                    "memory_consolidate_failed",
+                    error=str(exc),
+                    call_sid=session.call_sid,
+                )
+
             await push_call_summary(session.db_call_id)
             if session.patient_phone:
                 await send_post_call_sms(session.patient_phone, summary)

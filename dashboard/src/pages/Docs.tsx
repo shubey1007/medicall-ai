@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { DocsSidebar } from "@/components/Docs/DocsSidebar";
 import { MarkdownRenderer } from "@/components/Docs/MarkdownRenderer";
 
-// Raw markdown imports via Vite ?raw
 import overview from "@/content/docs/01-overview.md?raw";
 import techStack from "@/content/docs/02-tech-stack.md?raw";
 import architecture from "@/content/docs/03-architecture.md?raw";
@@ -34,27 +33,22 @@ interface DocSection {
 }
 
 const SECTIONS: DocSection[] = [
-  // Getting Started
   { id: "overview", title: "Overview", group: "Getting Started", content: overview },
   { id: "tech-stack", title: "Tech Stack", group: "Getting Started", content: techStack },
   { id: "architecture", title: "Architecture", group: "Getting Started", content: architecture },
-  // Core Flows
   { id: "request-lifecycle", title: "Request Lifecycle", group: "Core Flows", content: requestLifecycle },
   { id: "vapi-path", title: "Vapi Path", group: "Core Flows", content: vapiPath },
   { id: "multi-agent", title: "Multi-Agent System", group: "Core Flows", content: multiAgent },
   { id: "post-call", title: "Post-Call Pipeline", group: "Core Flows", content: postCallPipeline },
   { id: "realtime-dashboard", title: "Real-Time Dashboard", group: "Core Flows", content: realtimeDashboard },
-  // Internals
   { id: "data-model", title: "Data Model", group: "Internals", content: dataModel },
   { id: "services", title: "Services Layer", group: "Internals", content: servicesLayer },
   { id: "integrations", title: "External Integrations", group: "Internals", content: externalIntegrations },
   { id: "vector-memory", title: "Vector Memory (Qdrant)", group: "Internals", content: vectorMemory },
   { id: "api-reference", title: "API Reference", group: "Internals", content: apiReference },
   { id: "config", title: "Configuration & Deployment", group: "Internals", content: configDeployment },
-  // Reflections
   { id: "design-decisions", title: "Design Decisions", group: "Reflections", content: designDecisions },
   { id: "debugging", title: "Debugging Stories", group: "Reflections", content: debuggingStories },
-  // Interview Prep
   { id: "faqs", title: "FAQs", group: "Interview Prep", content: faqs },
   { id: "interview-basic", title: "Interview Q&A — Basic", group: "Interview Prep", content: interviewBasic },
   { id: "interview-intermediate", title: "Interview Q&A — Intermediate", group: "Interview Prep", content: interviewIntermediate },
@@ -70,20 +64,29 @@ export default function Docs() {
 
   useEffect(() => {
     window.history.replaceState(null, "", `#${activeId}`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const main = document.querySelector(".main");
+    if (main) main.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeId]);
 
   const active = SECTIONS.find((s) => s.id === activeId) ?? SECTIONS[0];
 
   return (
-    <div className="flex gap-8">
-      <DocsSidebar
-        sections={SECTIONS.map(({ id, title, group }) => ({ id, title, group }))}
-        activeId={activeId}
-        onSelect={setActiveId}
-      />
-      <div className="flex-1 min-w-0 max-w-4xl">
-        <MarkdownRenderer content={active.content} />
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Documentation</h1>
+          <div className="page-sub">Deep dive into MediCall AI architecture and design</div>
+        </div>
+      </div>
+      <div className="docs-layout">
+        <DocsSidebar
+          sections={SECTIONS.map(({ id, title, group }) => ({ id, title, group }))}
+          activeId={activeId}
+          onSelect={setActiveId}
+        />
+        <div className="card" style={{ padding: 28, minWidth: 0 }}>
+          <MarkdownRenderer content={active.content} />
+        </div>
       </div>
     </div>
   );

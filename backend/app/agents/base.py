@@ -6,6 +6,19 @@ if TYPE_CHECKING:
     from app.services.call_manager import CallSession
 
 
+RESPONSE_STYLE = """Response style:
+- Keep replies under 2 sentences unless the patient explicitly asks for detail.
+- Don't echo the patient's words back. Don't restate what was just said.
+- Do not ask "Is there anything else?". Use the end_call tool when the patient is done.
+- One question at a time. Never stack multiple questions in a single reply.
+- Speak naturally and calmly. No filler phrases ("great question", "absolutely")."""
+
+# For every non-triage role: the call is already under way when you activate.
+# Do NOT greet, do NOT introduce yourself, do NOT ask the caller to repeat
+# what they already said. Pick up the thread.
+MID_CONVERSATION_RULE = """You are taking over mid-call from another role. The patient has already been greeted. Do NOT say hello, do NOT introduce a new agent, and do NOT re-ask information already collected in the transcript. Continue the conversation immediately with the next useful action (ask the next specific question or call a tool)."""
+
+
 class BaseAgent(ABC):
     name: str
     description: str

@@ -1,6 +1,8 @@
 // dashboard/src/pages/DemoCall.tsx
 import { useEffect, useRef, useState } from "react";
 import Vapi from "@vapi-ai/web";
+import Icon from "@/components/primitives/Icon";
+import LiveBadge from "@/components/primitives/LiveBadge";
 
 const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY ?? "";
 
@@ -15,22 +17,10 @@ const ASSISTANT_CONFIG = {
     provider: "openai",
     model: "gpt-4o-mini",
     temperature: 0.7,
-    messages: [
-      {
-        role: "system",
-        content: SYSTEM_PROMPT,
-      },
-    ],
+    messages: [{ role: "system", content: SYSTEM_PROMPT }],
   },
-  voice: {
-    provider: "11labs",
-    voiceId: "burt",
-  },
-  transcriber: {
-    provider: "deepgram",
-    model: "nova-2",
-    language: "en-US",
-  },
+  voice: { provider: "11labs", voiceId: "burt" },
+  transcriber: { provider: "deepgram", model: "nova-2", language: "en-US" },
   firstMessage:
     "Hello! I'm MediCall AI. I can answer medical questions, help with medications, or assist with appointments. How can I help you today?",
 };
@@ -47,7 +37,7 @@ export default function DemoCall() {
   const [status, setStatus] = useState<CallStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [volume, setVolume] = useState(0);
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (!VAPI_PUBLIC_KEY) {
@@ -84,7 +74,7 @@ export default function DemoCall() {
             { role: msg.role ?? "unknown", text: msg.transcript! },
           ]);
         }
-      }
+      },
     );
     vapi.on("error", (e: unknown) => {
       console.error("Vapi error:", e);
@@ -113,7 +103,7 @@ export default function DemoCall() {
     setErrorMsg("");
     try {
       await vapiRef.current?.start(
-        ASSISTANT_CONFIG as Parameters<InstanceType<typeof Vapi>["start"]>[0]
+        ASSISTANT_CONFIG as Parameters<InstanceType<typeof Vapi>["start"]>[0],
       );
     } catch (e) {
       console.error("Failed to start Vapi call:", e);
@@ -127,110 +117,173 @@ export default function DemoCall() {
     setStatus("ended");
   }
 
-  const bars = Array.from({ length: 5 }, (_, i) => i);
+  const bars = Array.from({ length: 9 }, (_, i) => i);
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-slate-900">MediCall AI — Live Demo</h1>
-        <p className="text-slate-500 text-sm">
-          Powered by Vapi + Qdrant · Multilingual · No phone required
-        </p>
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Live Demo</h1>
+          <div className="page-sub">
+            Talk to MediCall AI in the browser — no phone required
+          </div>
+        </div>
+        <div className="page-actions">
+          {status === "active" && <LiveBadge label="LIVE" />}
+        </div>
       </div>
 
-      {/* Call widget */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 flex flex-col items-center gap-6">
-        {/* Volume visualizer */}
-        <div className="flex items-end gap-1 h-12">
-          {bars.map((i) => (
-            <div
-              key={i}
-              className="w-2 rounded bg-blue-500 transition-all duration-75"
-              style={{
-                height: `${Math.max(8, volume * 48)}px`,
-              }}
-            />
-          ))}
-        </div>
+      <div className="demo-container">
+        <div
+          className="card"
+          style={{
+            padding: 36,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 24,
+            background:
+              "radial-gradient(ellipse at top, rgba(0,229,208,0.08), transparent 60%), var(--bg-surface)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 56 }}>
+            {bars.map((i) => {
+              const offset = Math.abs(i - 4) * 0.15;
+              const active = status === "active";
+              const h = Math.max(8, (active ? volume : 0.1) * 56 * (1 - offset) + 8);
+              return (
+                <div
+                  key={i}
+                  style={{
+                    width: 4,
+                    background: active ? "var(--brand-400)" : "var(--bg-elevated)",
+                    borderRadius: 2,
+                    height: `${h}px`,
+                    transition: "height 80ms ease-out",
+                    boxShadow: active ? "0 0 8px rgba(0,229,208,0.5)" : "none",
+                  }}
+                />
+              );
+            })}
+          </div>
 
-        <div className="text-center">
-          {status === "idle" && (
-            <p className="text-slate-500">Click to start a demo call</p>
-          )}
-          {status === "connecting" && (
-            <p className="text-blue-600 animate-pulse">Connecting...</p>
+          <div style={{ textAlign: "center" }}>
+            {status === "idle" && (
+              <div style={{ color: "var(--text-secondary)" }}>
+                Click to start a demo call
+              </div>
+            )}
+            {status === "connecting" && (
+              <div style={{ color: "var(--brand-400)" }}>Connecting…</div>
+            )}
+            {status === "active" && (
+              <div style={{ color: "var(--success)", fontWeight: 600 }}>Live · speak now</div>
+            )}
+            {status === "ended" && (
+              <div style={{ color: "var(--text-secondary)" }}>Call ended</div>
+            )}
+          </div>
+
+          {(status === "idle" || status === "ended") && (
+            <button
+              onClick={startCall}
+              className="btn btn-primary"
+              style={{ height: 44, padding: "0 28px" }}
+            >
+              <Icon name="phone" size={16} />{" "}
+              {status === "ended" ? "Start new call" : "Start demo call"}
+            </button>
           )}
           {status === "active" && (
-            <p className="text-green-600 font-medium">● Live — speak now</p>
+            <button
+              onClick={endCall}
+              className="btn btn-danger"
+              style={{ height: 44, padding: "0 28px" }}
+            >
+              <Icon name="phone-off" size={16} /> End call
+            </button>
           )}
-          {status === "ended" && (
-            <p className="text-slate-500">Call ended</p>
+
+          {errorMsg && (
+            <div
+              style={{
+                padding: 12,
+                background: "var(--danger-subtle)",
+                border: "1px solid rgba(248,113,113,0.3)",
+                borderRadius: "var(--radius-md)",
+                color: "var(--danger)",
+                fontSize: "var(--text-sm)",
+                width: "100%",
+              }}
+            >
+              <strong>Error:</strong> {errorMsg}
+            </div>
           )}
         </div>
 
-        {(status === "idle" || status === "ended") && (
-          <button
-            onClick={startCall}
-            className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full text-lg shadow"
-          >
-            {status === "ended" ? "Start New Call" : "Start Demo Call"}
-          </button>
-        )}
-
-        {status === "active" && (
-          <button
-            onClick={endCall}
-            className="px-8 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-full text-lg shadow"
-          >
-            End Call
-          </button>
-        )}
-
-        {errorMsg && (
-          <div className="w-full bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-            <strong>Error:</strong> {errorMsg}
+        {transcript.length > 0 && (
+          <div className="card" style={{ padding: 16, maxHeight: 340, overflow: "auto" }}>
+            <div className="overline" style={{ marginBottom: 10 }}>
+              Live transcript
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {transcript.map((t, i) => {
+                const isAi = t.role === "assistant";
+                return (
+                  <div
+                    key={i}
+                    className={`bubble-col ${isAi ? "agent" : "patient"}`}
+                    style={{
+                      alignSelf: isAi ? "flex-start" : "flex-end",
+                    }}
+                  >
+                    <div
+                      className={`bubble ${isAi ? "bubble-agent" : "bubble-patient"}`}
+                    >
+                      {t.text}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Live transcript */}
-      {transcript.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-h-80 overflow-y-auto">
-          <div className="text-xs uppercase text-slate-400 font-semibold">
-            Live Transcript
-          </div>
-          {transcript.map((t, i) => (
-            <div
-              key={i}
-              className={`text-sm ${
-                t.role === "assistant" ? "text-blue-700" : "text-slate-700"
-              }`}
-            >
-              <span className="font-medium">
-                {t.role === "assistant" ? "AI" : "You"}:{" "}
-              </span>
-              {t.text}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 12,
+          }}
+        >
+          {[
+            { icon: "languages", title: "Multilingual", desc: "Hindi & English auto-detect" },
+            { icon: "brain", title: "Memory", desc: "Recalls past visits via Qdrant" },
+            { icon: "zap", title: "Real-time", desc: "Live voice with Vapi" },
+          ].map((f) => (
+            <div key={f.title} className="card" style={{ padding: 18, textAlign: "center" }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: "var(--brand-subtle)",
+                  color: "var(--brand-400)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 10,
+                }}
+              >
+                <Icon name={f.icon} size={18} />
+              </div>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{f.title}</div>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginTop: 4 }}>
+                {f.desc}
+              </div>
             </div>
           ))}
         </div>
-      )}
-
-      {/* Feature callouts */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { icon: "🌐", title: "Multilingual", desc: "Hindi & English auto-detect" },
-          { icon: "🧠", title: "Memory", desc: "Recalls past visits via Qdrant" },
-          { icon: "⚡", title: "Real-time", desc: "Live voice with Vapi" },
-        ].map((f) => (
-          <div
-            key={f.title}
-            className="bg-white rounded-lg border border-slate-200 p-4 text-center"
-          >
-            <div className="text-2xl mb-1">{f.icon}</div>
-            <div className="font-semibold text-sm text-slate-800">{f.title}</div>
-            <div className="text-xs text-slate-500">{f.desc}</div>
-          </div>
-        ))}
       </div>
     </div>
   );

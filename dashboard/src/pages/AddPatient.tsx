@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import Icon from "@/components/primitives/Icon";
 
 export default function AddPatient() {
   const navigate = useNavigate();
@@ -15,7 +16,10 @@ export default function AddPatient() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!phone.trim()) { setError("Phone number is required."); return; }
+    if (!phone.trim()) {
+      setError("Phone number is required.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -26,7 +30,6 @@ export default function AddPatient() {
         medical_context.conditions = conditions.split(",").map((s) => s.trim()).filter(Boolean);
       if (medications.trim())
         medical_context.medications = medications.split(",").map((s) => s.trim()).filter(Boolean);
-
       await api.post("/api/patients", {
         phone: phone.trim(),
         name: name.trim() || null,
@@ -44,44 +47,103 @@ export default function AddPatient() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Add Patient</h1>
-      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => navigate("/patients")}
+            style={{ marginBottom: 8 }}
+          >
+            <Icon name="chevron-left" size={14} /> Back
+          </button>
+          <h1 className="page-title">Add Patient</h1>
+          <div className="page-sub">Register a new patient in the clinic directory</div>
+        </div>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="card"
+        style={{
+          padding: 24,
+          maxWidth: 560,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
         <Field label="Phone Number *">
-          <input type="tel" placeholder="+1234567890" value={phone}
-            onChange={(e) => setPhone(e.target.value)} required
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+          <input
+            type="tel"
+            className="input"
+            placeholder="+1234567890"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            required
+          />
         </Field>
         <Field label="Full Name">
-          <input type="text" placeholder="Jane Doe" value={name}
+          <input
+            type="text"
+            className="input"
+            placeholder="Jane Doe"
+            value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+          />
         </Field>
         <Field label="Allergies (comma-separated)">
-          <input type="text" placeholder="Penicillin, Peanuts" value={allergies}
+          <input
+            type="text"
+            className="input"
+            placeholder="Penicillin, Peanuts"
+            value={allergies}
             onChange={(e) => setAllergies(e.target.value)}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+          />
         </Field>
         <Field label="Conditions (comma-separated)">
-          <input type="text" placeholder="Diabetes, Hypertension" value={conditions}
+          <input
+            type="text"
+            className="input"
+            placeholder="Diabetes, Hypertension"
+            value={conditions}
             onChange={(e) => setConditions(e.target.value)}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+          />
         </Field>
         <Field label="Medications (comma-separated)">
-          <input type="text" placeholder="Metformin, Lisinopril" value={medications}
+          <input
+            type="text"
+            className="input"
+            placeholder="Metformin, Lisinopril"
+            value={medications}
             onChange={(e) => setMedications(e.target.value)}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+          />
         </Field>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && (
+          <div
+            style={{
+              padding: 10,
+              background: "var(--danger-subtle)",
+              border: "1px solid rgba(248,113,113,0.3)",
+              color: "var(--danger)",
+              borderRadius: "var(--radius-md)",
+              fontSize: "var(--text-sm)",
+            }}
+          >
+            {error}
+          </div>
+        )}
 
-        <div className="flex gap-3 pt-2">
-          <button type="submit" disabled={submitting}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded">
-            {submitting ? "Saving..." : "Save Patient"}
+        <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
+          <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <Icon name="check" size={14} /> {submitting ? "Saving..." : "Save Patient"}
           </button>
-          <button type="button" onClick={() => navigate("/patients")}
-            className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => navigate("/patients")}
+          >
             Cancel
           </button>
         </div>
@@ -93,7 +155,9 @@ export default function AddPatient() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs text-slate-500 uppercase mb-1">{label}</label>
+      <div className="overline" style={{ marginBottom: 6 }}>
+        {label}
+      </div>
       {children}
     </div>
   );

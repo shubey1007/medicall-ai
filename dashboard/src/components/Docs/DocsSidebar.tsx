@@ -19,28 +19,27 @@ export function DocsSidebar({ sections, activeId, onSelect }: Props) {
   }
 
   return (
-    <nav className="sticky top-6 w-64 flex-shrink-0 space-y-5 max-h-[calc(100vh-3rem)] overflow-y-auto pr-3">
+    <nav
+      className="docs-sidebar"
+      style={{ display: "flex", flexDirection: "column", gap: 18 }}
+    >
       {Object.entries(groups).map(([group, items]) => (
         <div key={group}>
-          <div className="text-xs font-semibold uppercase text-slate-400 mb-2 px-2">
+          <div className="overline" style={{ padding: "0 8px", marginBottom: 6 }}>
             {group}
           </div>
-          <ul className="space-y-0.5">
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {items.map((s) => (
-              <li key={s.id}>
-                <button
-                  onClick={() => onSelect(s.id)}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
-                    activeId === s.id
-                      ? "bg-blue-100 text-blue-700 font-medium"
-                      : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {s.title}
-                </button>
-              </li>
+              <button
+                key={s.id}
+                onClick={() => onSelect(s.id)}
+                className={`nav-item ${activeId === s.id ? "active" : ""}`}
+                style={{ height: 32, fontSize: "var(--text-xs)", padding: "0 10px" }}
+              >
+                {s.title}
+              </button>
             ))}
-          </ul>
+          </div>
         </div>
       ))}
     </nav>

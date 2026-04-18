@@ -1,33 +1,24 @@
 // dashboard/src/pages/PatientDetail.tsx
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { formatDate, formatDatePretty, formatDuration, formatTimePretty } from "@/lib/format";
-import type { Patient, Call, Appointment, PaginatedResponse } from "@/types";
-
-const STATUS_COLORS: Record<string, string> = {
-  ringing: "bg-yellow-100 text-yellow-800",
-  active: "bg-green-100 text-green-800",
-  completed: "bg-slate-100 text-slate-700",
-  failed: "bg-red-100 text-red-800",
-};
-
-const APPT_COLORS: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  confirmed: "bg-blue-100 text-blue-800",
-  cancelled: "bg-slate-100 text-slate-500 line-through",
-  completed: "bg-green-100 text-green-800",
-};
+import type { Appointment, Call, PaginatedResponse, Patient } from "@/types";
+import Icon from "@/components/primitives/Icon";
+import UrgencyBar from "@/components/primitives/UrgencyBar";
+import AgentPill, { AGENTS } from "@/components/primitives/AgentPill";
+import { formatDatePretty, formatDuration, formatTimePretty, initialsFrom, maskPhone } from "@/lib/format";
+import { useConfirm } from "@/components/Confirm/ConfirmProvider";
+import AppointmentStatusSelect from "@/components/AppointmentStatusSelect";
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const confirm = useConfirm();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [calls, setCalls] = useState<Call[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const [calling, setCalling] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -43,36 +34,28 @@ export default function PatientDetail() {
       api.get<Patient>(`/api/patients/${id}`),
       api.get<PaginatedResponse<Call>>(`/api/calls`, { params: { page_size: 20 } }),
       api.get<PaginatedResponse<Appointment>>(`/api/appointments`, { params: { patient_id: id, page_size: 20 } }),
-    ]).then(([pRes, cRes, aRes]) => {
-      setPatient(pRes.data);
-      setEditName(pRes.data.name ?? "");
-      // filter calls that belong to this patient
-      setCalls(cRes.data.items.filter((c) => c.patient_id === id));
-      setAppointments(aRes.data.items);
-    }).finally(() => setLoading(false));
+    ])
+      .then(([pRes, cRes, aRes]) => {
+        setPatient(pRes.data);
+        setCalls(cRes.data.items.filter((c) => c.patient_id === id));
+        setAppointments(aRes.data.items);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [id]);
-
-  async function handleSaveName() {
-    if (!patient) return;
-    setSaving(true);
-    try {
-      const res = await api.put<Patient>(`/api/patients/${patient.id}`, { name: editName });
-      setPatient(res.data);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleCall() {
     if (!patient) return;
     const label = patient.name ?? patient.phone;
-    if (!window.confirm(`Call ${label} at ${patient.phone}?`)) return;
+    const ok = await confirm({
+      title: `Call ${label}?`,
+      body: `MediCall will place an outbound call to ${patient.phone}.`,
+      confirmLabel: "Place call",
+    });
+    if (!ok) return;
     setCalling(true);
     try {
       await api.post("/api/calls/initiate", { to_phone: patient.phone });
-    } catch {
-      // silent
     } finally {
       setCalling(false);
     }
@@ -114,259 +97,431 @@ export default function PatientDetail() {
     }
   }
 
-  if (loading) return <div className="p-8 text-slate-500">Loading...</div>;
-  if (!patient) return <div className="p-8 text-red-500">Patient not found.</div>;
+  if (loading) {
+    return (
+      <div className="page">
+        <div className="empty">
+          <Icon name="loader" size={24} />
+          Loading patient…
+        </div>
+      </div>
+    );
+  }
+  if (!patient) {
+    return (
+      <div className="page">
+        <div className="empty" style={{ color: "var(--danger)" }}>
+          Patient not found.
+        </div>
+      </div>
+    );
+  }
 
-  const ctx = patient.medical_context as Record<string, string[]>;
-  const allergies: string[] = ctx.allergies ?? [];
-  const conditions: string[] = ctx.conditions ?? [];
-  const medications: string[] = ctx.medications ?? [];
+  const ctx = patient.medical_context as {
+    allergies?: string[];
+    conditions?: string[];
+    medications?: string[];
+    age?: number | string;
+    bloodType?: string;
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Back */}
-      <Link to="/patients" className="text-blue-600 text-sm hover:underline">
-        &larr; Back to Patients
-      </Link>
-
-      {/* Patient header */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xl font-bold">
-                {(patient.name ?? patient.phone).charAt(0).toUpperCase()}
-              </div>
-              <div>
-                {editing ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="border border-slate-300 rounded px-2 py-1 text-lg font-semibold"
-                      autoFocus
-                    />
-                    <button onClick={handleSaveName} disabled={saving}
-                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded disabled:opacity-50">
-                      {saving ? "Saving..." : "Save"}
-                    </button>
-                    <button onClick={() => setEditing(false)} className="px-3 py-1 bg-slate-200 text-slate-700 text-sm rounded">
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-bold text-slate-900">{patient.name ?? "—"}</h1>
-                    <button onClick={() => setEditing(true)}
-                      className="text-xs text-blue-600 hover:underline">Edit</button>
-                  </div>
-                )}
-                <p className="text-slate-500 font-mono text-sm mt-0.5">{patient.phone}</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-3">
-            <div className="flex gap-2">
-              <button
-                onClick={handleCall}
-                disabled={calling}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
-              >
-                {calling ? "Calling..." : "📞 Call"}
-              </button>
-              <button
-                onClick={openScheduleModal}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
-              >
-                📅 Schedule Call
-              </button>
-            </div>
-            <div className="text-right text-xs text-slate-400">
-              <div>Patient since</div>
-              <div className="font-medium text-slate-600">{formatDate(patient.created_at)}</div>
-            </div>
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => navigate("/patients")}
+            style={{ marginBottom: 8 }}
+          >
+            <Icon name="chevron-left" size={14} /> Back to patients
+          </button>
+          <h1 className="page-title">{patient.name ?? "Unknown"}</h1>
+          <div className="page-sub mono">
+            {maskPhone(patient.phone)} · patient since {formatDatePretty(patient.created_at)}
           </div>
         </div>
-
-        {/* Medical context */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <MedSection title="Allergies" items={allergies} color="red" />
-          <MedSection title="Conditions" items={conditions} color="yellow" />
-          <MedSection title="Medications" items={medications} color="blue" />
+        <div className="page-actions">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setDetailsOpen(true)}
+          >
+            <Icon name="info" size={14} /> View details
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => navigate(`/patients/${patient.id}/edit`)}
+          >
+            <Icon name="edit-3" size={14} /> Edit
+          </button>
+          <button className="btn btn-secondary" onClick={openScheduleModal}>
+            <Icon name="calendar-plus" size={14} /> Schedule
+          </button>
+          <button className="btn btn-primary" onClick={handleCall} disabled={calling}>
+            <Icon name="phone-outgoing" size={14} /> {calling ? "Calling…" : "Outbound call"}
+          </button>
         </div>
       </div>
 
-      {/* Appointments */}
-      <section>
-        <h2 className="text-lg font-semibold text-slate-900 mb-3">Appointments</h2>
-        {appointments.length === 0 ? (
-          <Empty text="No appointments on record." />
-        ) : (
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
-                <tr>
-                  <th className="px-4 py-3 text-left">Doctor</th>
-                  <th className="px-4 py-3 text-left">Date &amp; Time</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {appointments.map((a) => (
-                  <tr key={a.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3 font-medium">{a.doctor_name}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{formatDatePretty(a.scheduled_at)}</div>
-                      <div className="text-xs text-slate-500">{formatTimePretty(a.scheduled_at)}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${APPT_COLORS[a.status] ?? ""}`}>
-                        {a.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{a.notes ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {detailsOpen && (
+        <>
+          <div className="panel-backdrop" onClick={() => setDetailsOpen(false)} />
+          <div className="panel">
+            <div
+              style={{
+                padding: "14px 20px",
+                borderBottom: "1px solid var(--border-subtle)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <button className="icon-btn" onClick={() => setDetailsOpen(false)} title="Close">
+                <Icon name="chevron-left" size={18} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "var(--text-md)", fontWeight: 600 }}>
+                  Patient details
+                </div>
+                <div
+                  style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}
+                >
+                  Read-only view · click Edit to change
+                </div>
+              </div>
+            </div>
+            <div
+              style={{
+                overflowY: "auto",
+                padding: 20,
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                flex: 1,
+              }}
+            >
+        <div className="panel-card" style={{ padding: 0, border: 0, background: "transparent", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div className="patient-avatar">{initialsFrom(patient.name, "??")}</div>
+            <div>
+              <div style={{ fontSize: "var(--text-md)", fontWeight: 600 }}>
+                {patient.name ?? "Unknown"}
+              </div>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
+                ID · {patient.id.slice(0, 12)}
+              </div>
+            </div>
           </div>
-        )}
-      </section>
+
+          <div className="divider" />
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="meta-row">
+              <span className="k">Phone</span>
+              <span className="v">{maskPhone(patient.phone)}</span>
+            </div>
+            <div className="meta-row">
+              <span className="k">Age</span>
+              <span className="v">{ctx.age ?? "—"}</span>
+            </div>
+            <div className="meta-row">
+              <span className="k">Blood type</span>
+              <span className="v">{ctx.bloodType ?? "—"}</span>
+            </div>
+            <div className="meta-row">
+              <span className="k">Total calls</span>
+              <span className="v">{calls.length}</span>
+            </div>
+            <div className="meta-row">
+              <span className="k">Last call</span>
+              <span className="v">
+                {calls[0] ? formatDatePretty(calls[0].started_at) : "—"}
+              </span>
+            </div>
+          </div>
+
+          <div className="divider" />
+
+          <div>
+            <div className="overline" style={{ marginBottom: 8 }}>
+              Allergies
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(ctx.allergies?.length ?? 0) === 0 ? (
+                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
+                  None reported
+                </span>
+              ) : (
+                ctx.allergies!.map((a, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: 11,
+                      background: "var(--warning-subtle)",
+                      color: "var(--warning)",
+                      padding: "3px 10px",
+                      borderRadius: "var(--radius-full)",
+                      border: "1px solid rgba(251,191,36,0.25)",
+                    }}
+                  >
+                    ⚠ {a}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="overline" style={{ marginBottom: 8 }}>
+              Conditions
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(ctx.conditions?.length ?? 0) === 0 ? (
+                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
+                  None reported
+                </span>
+              ) : (
+                ctx.conditions!.map((a, i) => (
+                  <span key={i} className="badge badge-neutral">
+                    {a}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="overline" style={{ marginBottom: 8 }}>
+              Medications
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(ctx.medications?.length ?? 0) === 0 ? (
+                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
+                  None reported
+                </span>
+              ) : (
+                ctx.medications!.map((a, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: 11,
+                      background: "var(--success-subtle)",
+                      color: "var(--success)",
+                      padding: "3px 10px",
+                      borderRadius: "var(--radius-full)",
+                      border: "1px solid rgba(52,211,153,0.25)",
+                    }}
+                  >
+                    {a}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Main content — timeline + appointments take the full width now. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {/* Call timeline */}
+          <div>
+            <div className="overline" style={{ marginBottom: 14 }}>
+              Call timeline · {calls.length}
+            </div>
+            {calls.length === 0 ? (
+              <div className="empty">
+                <Icon name="phone-off" size={32} style={{ color: "var(--text-tertiary)" }} />
+                <div style={{ fontSize: "var(--text-md)", color: "var(--text-primary)", fontWeight: 600 }}>
+                  No calls yet
+                </div>
+                <div>This patient has not contacted MediCall.</div>
+              </div>
+            ) : (
+              <div className="ctl">
+                {calls.map((c, i) => {
+                  const lastAgent = AGENTS[(c.current_agent || "").toLowerCase()];
+                  return (
+                    <Link
+                      to={`/calls/${c.id}`}
+                      key={c.id}
+                      className="ctl-item"
+                      style={{
+                        color: lastAgent?.color ?? "var(--text-secondary)",
+                        animation: "stagger-up 0.3s var(--ease-out) both",
+                        animationDelay: `${i * 50}ms`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          color: "var(--text-primary)",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "var(--text-md)", fontWeight: 600 }}>
+                            {c.status === "failed" ? "Call failed" : "Call completed"}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "var(--text-xs)",
+                              color: "var(--text-tertiary)",
+                              marginTop: 2,
+                              fontFamily: "var(--font-mono)",
+                            }}
+                          >
+                            {formatDatePretty(c.started_at)} · {formatTimePretty(c.started_at)} ·{" "}
+                            {formatDuration(c.duration_seconds)}
+                          </div>
+                        </div>
+                        {c.urgency_level && <UrgencyBar level={c.urgency_level} />}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                        <AgentPill agent={c.current_agent} size="sm" />
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Appointments */}
+          <div>
+            <div className="overline" style={{ marginBottom: 14 }}>
+              Appointments · {appointments.length}
+            </div>
+            {appointments.length === 0 ? (
+              <div
+                className="empty"
+                style={{ padding: "28px 16px", fontSize: "var(--text-sm)" }}
+              >
+                No appointments on record.
+              </div>
+            ) : (
+              <div className="card" style={{ overflow: "hidden" }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Doctor</th>
+                      <th>Date &amp; Time</th>
+                      <th>Status</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appointments.map((a) => (
+                      <tr key={a.id} style={{ cursor: "default" }}>
+                        <td style={{ fontWeight: 500 }}>{a.doctor_name}</td>
+                        <td className="mono">
+                          {formatDatePretty(a.scheduled_at)} · {formatTimePretty(a.scheduled_at)}
+                        </td>
+                        <td>
+                          <AppointmentStatusSelect
+                            appointmentId={a.id}
+                            status={a.status}
+                            onChange={(next) =>
+                              setAppointments((prev) =>
+                                prev.map((x) => (x.id === a.id ? { ...x, status: next } : x)),
+                              )
+                            }
+                          />
+                        </td>
+                        <td style={{ color: "var(--text-tertiary)" }}>{a.notes ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
 
       {showSchedule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-1">Schedule Appointment</h2>
-            <p className="text-sm text-slate-500 mb-4">
-              For {patient.name ?? patient.phone}
-            </p>
-            <form onSubmit={submitSchedule} className="space-y-4">
+        <div className="modal-backdrop" onClick={() => setShowSchedule(false)}>
+          <div
+            className="modal"
+            style={{ width: 460, padding: 0 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: 20,
+                borderBottom: "1px solid var(--border-subtle)",
+              }}
+            >
+              <div style={{ fontSize: "var(--text-md)", fontWeight: 600 }}>
+                Schedule appointment
+              </div>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginTop: 4 }}>
+                For {patient.name ?? patient.phone}
+              </div>
+            </div>
+            <form
+              onSubmit={submitSchedule}
+              style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}
+            >
               <div>
-                <label className="block text-xs text-slate-500 uppercase mb-1">Doctor Name *</label>
+                <div className="overline" style={{ marginBottom: 6 }}>
+                  Doctor name *
+                </div>
                 <input
-                  type="text"
-                  placeholder="Dr. Patel"
+                  className="input"
                   value={doctorName}
                   onChange={(e) => setDoctorName(e.target.value)}
+                  placeholder="Dr. Patel"
                   required
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 uppercase mb-1">Date &amp; Time *</label>
+                <div className="overline" style={{ marginBottom: 6 }}>
+                  Date &amp; time *
+                </div>
                 <input
+                  className="input"
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
                   required
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 uppercase mb-1">Notes</label>
+                <div className="overline" style={{ marginBottom: 6 }}>
+                  Notes
+                </div>
                 <textarea
+                  className="input"
                   rows={2}
-                  placeholder="Optional notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm resize-none"
+                  placeholder="Optional notes"
                 />
               </div>
-
-              {scheduleError && <p className="text-red-600 text-sm">{scheduleError}</p>}
-
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={scheduling}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded"
-                >
-                  {scheduling ? "Scheduling..." : "Schedule"}
-                </button>
+              {scheduleError && (
+                <div style={{ color: "var(--danger)", fontSize: "var(--text-sm)" }}>
+                  {scheduleError}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button
                   type="button"
+                  className="btn btn-secondary"
                   onClick={() => setShowSchedule(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded"
                 >
                   Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={scheduling}>
+                  {scheduling ? "Scheduling…" : "Schedule"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* Call history */}
-      <section>
-        <h2 className="text-lg font-semibold text-slate-900 mb-3">Call History</h2>
-        {calls.length === 0 ? (
-          <Empty text="No calls for this patient yet." />
-        ) : (
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
-                <tr>
-                  <th className="px-4 py-3 text-left">Date</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Duration</th>
-                  <th className="px-4 py-3 text-left">Agent</th>
-                  <th className="px-4 py-3 text-left"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {calls.map((c) => (
-                  <tr key={c.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{formatDatePretty(c.started_at)}</div>
-                      <div className="text-xs text-slate-500">{formatTimePretty(c.started_at)}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[c.status] ?? ""}`}>
-                        {c.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{c.duration_seconds != null ? formatDuration(c.duration_seconds) : "—"}</td>
-                    <td className="px-4 py-3 capitalize">{c.current_agent}</td>
-                    <td className="px-4 py-3">
-                      <Link to={`/calls/${c.id}`} className="text-blue-600 hover:underline text-xs">
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function MedSection({ title, items, color }: { title: string; items: string[]; color: "red" | "yellow" | "blue" }) {
-  const bg = { red: "bg-red-50 border-red-200", yellow: "bg-yellow-50 border-yellow-200", blue: "bg-blue-50 border-blue-200" }[color];
-  const badge = { red: "bg-red-100 text-red-800", yellow: "bg-yellow-100 text-yellow-800", blue: "bg-blue-100 text-blue-800" }[color];
-  return (
-    <div className={`border rounded-lg p-3 ${bg}`}>
-      <div className="text-xs font-semibold uppercase text-slate-500 mb-2">{title}</div>
-      {items.length === 0 ? (
-        <span className="text-xs text-slate-400">None recorded</span>
-      ) : (
-        <div className="flex flex-wrap gap-1">
-          {items.map((item) => (
-            <span key={item} className={`px-2 py-0.5 rounded-full text-xs ${badge}`}>{item}</span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="bg-white border border-dashed border-slate-200 rounded-lg p-6 text-center text-slate-400 text-sm">
-      {text}
     </div>
   );
 }

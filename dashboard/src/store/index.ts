@@ -3,6 +3,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import callReducer from "./callSlice";
 import patientReducer from "./patientSlice";
 import analyticsReducer from "./analyticsSlice";
+import uiReducer from "./uiSlice";
 import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 
 export const store = configureStore({
@@ -10,6 +11,7 @@ export const store = configureStore({
     calls: callReducer,
     patients: patientReducer,
     analytics: analyticsReducer,
+    ui: uiReducer,
   },
 });
 

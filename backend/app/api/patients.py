@@ -81,10 +81,30 @@ async def update_patient(
     patient = result.scalar_one_or_none()
     if patient is None:
         raise HTTPException(status_code=404, detail="Patient not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+
+    updates = payload.model_dump(exclude_unset=True)
+
+    # Phone is unique — check before assigning so we return a clean 409
+    # instead of letting IntegrityError bubble up.
+    new_phone = updates.get("phone")
+    if new_phone is not None and new_phone != patient.phone:
+        conflict = await db.execute(
+            select(Patient).where(Patient.phone == new_phone, Patient.id != patient_id)
+        )
+        if conflict.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409, detail="Another patient already uses that phone number."
+            )
+
+    for field, value in updates.items():
         setattr(patient, field, value)
-    await db.flush()
-    await db.commit()
+
+    try:
+        await db.flush()
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Phone number conflict.")
     await db.refresh(patient)
     return PatientOut.model_validate(patient)
 

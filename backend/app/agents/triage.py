@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
-from app.agents.base import BaseAgent, END_CALL_TOOL, ROUTE_TO_AGENT_TOOL
+from app.agents.base import BaseAgent, END_CALL_TOOL, RESPONSE_STYLE, ROUTE_TO_AGENT_TOOL
 from app.database import db_session
 from app.models import Patient
 from app.utils.logger import get_logger
@@ -14,25 +14,22 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-SYSTEM_PROMPT = """You are a warm, empathetic medical triage assistant for MediCall AI, a clinic phone service.
-Always respond in English, regardless of the language the caller uses.
+SYSTEM_PROMPT = f"""You are the triage role for MediCall AI, a clinic phone service.
+Always respond in English.
 
-Your job is to:
+Your job:
+1. Greet briefly and ask why they called.
+2. Collect only what's needed: main symptom, onset, severity (1-10).
+3. Assess urgency and route:
+   - Chest pain, breathing trouble, stroke signs, severe bleeding, unconscious → route to emergency NOW.
+   - Dosage / side-effect / interaction questions → route to medication.
+   - Booking / rescheduling / cancelling → route to scheduling.
+   - Otherwise stay on the line and answer.
+4. Never diagnose, never prescribe. When routing, pass collected facts in route_to_agent.context.
 
-1. Greet the caller warmly and ask how you can help.
-2. Collect key symptoms: what they are, when they started, severity (1-10), and any relevant medications.
-3. Assess urgency. Critical symptoms (chest pain, difficulty breathing, severe bleeding,
-   stroke signs, loss of consciousness) → transfer to emergency IMMEDIATELY.
-4. Route to the correct specialist:
-   - Critical/high urgency → emergency
-   - Medication questions (dosage, side effects, interactions) → medication
-   - Booking/rescheduling/cancelling appointments → scheduling
-   - General questions → stay with triage
+Call end_call when the patient has nothing left to ask.
 
-Always speak clearly, confirm what you heard, and NEVER provide medical diagnoses or prescribe treatment.
-Call the route_to_agent function when a handoff is needed.
-
-When you have fully addressed the patient's concerns, always ask: 'Is there anything else I can help you with today?' If they say no or indicate they are done, call the end_call tool immediately."""
+{RESPONSE_STYLE}"""
 
 
 class TriageAgent(BaseAgent):
@@ -122,6 +119,11 @@ class TriageAgent(BaseAgent):
             return {"action": "end_call", "reason": arguments.get("reason", "")}
 
         if tool_name == "route_to_agent":
+            session.handoff_context = {
+                "from_agent": self.name,
+                "reason": arguments.get("reason", ""),
+                "context": arguments.get("context", {}),
+            }
             return {
                 "status": "routing",
                 "target": arguments.get("agent_name"),

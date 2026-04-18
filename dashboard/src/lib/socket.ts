@@ -25,10 +25,14 @@ export function getSocket(): Socket {
   return _socket;
 }
 
-// Backwards-compat export — returns the (lazy) singleton
+// Backwards-compat export — returns the (lazy) singleton.
+// Functions must be bound to the real socket; otherwise internal props
+// like `_callbacks` are read off the Proxy target and everything explodes.
 export const dashboardSocket: Socket = new Proxy({} as Socket, {
   get(_target, prop) {
-    return (getSocket() as unknown as Record<string | symbol, unknown>)[prop];
+    const s = getSocket();
+    const val = (s as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof val === "function" ? (val as (...args: unknown[]) => unknown).bind(s) : val;
   },
 });
 

@@ -51,3 +51,10 @@ async def emit_agent_changed(payload: dict[str, Any]) -> None:
 
 async def emit_transcript(payload: dict[str, Any]) -> None:
     await sio.emit("call:transcript", payload, namespace=DASHBOARD_NS)
+
+
+async def emit_appointment_created(payload: dict[str, Any]) -> None:
+    """Fires after an agent books an appointment — cues the Appointments
+    page to refetch so the new booking appears without a manual refresh.
+    """
+    await sio.emit("appointment:created", payload, namespace=DASHBOARD_NS)

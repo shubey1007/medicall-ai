@@ -57,8 +57,14 @@ export default function ProtectedRoute() {
 
   if (state === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-400 text-sm">
-        Checking session...
+      <div
+        className="login-shell"
+        style={{
+          color: "var(--text-tertiary)",
+          fontSize: "var(--text-sm)",
+        }}
+      >
+        Checking session…
       </div>
     );
   }

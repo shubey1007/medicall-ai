@@ -4,7 +4,13 @@ from typing import TYPE_CHECKING, Any
 
 from twilio.rest import Client as TwilioClient
 
-from app.agents.base import BaseAgent, END_CALL_TOOL, ROUTE_TO_AGENT_TOOL
+from app.agents.base import (
+    BaseAgent,
+    END_CALL_TOOL,
+    MID_CONVERSATION_RULE,
+    RESPONSE_STYLE,
+    ROUTE_TO_AGENT_TOOL,
+)
 from app.services.settings_svc import get_effective
 from app.utils.logger import get_logger
 
@@ -14,20 +20,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-SYSTEM_PROMPT = """You are an emergency response assistant for MediCall AI. You are ONLY
-activated when a patient is reporting a medical emergency.
-Always respond in English, regardless of the language the caller uses.
+SYSTEM_PROMPT = f"""You are the emergency-response role for MediCall AI. You only activate for life-threatening symptoms.
+Always respond in English.
 
+{MID_CONVERSATION_RULE}
 
-YOUR PRIORITIES (in order):
-1. Tell the patient to call 911 or go to the nearest emergency room IMMEDIATELY if they
-   are in life-threatening distress. Repeat this clearly.
-2. Collect essential information: location, main symptoms, whether anyone is with them.
-3. Use trigger_emergency_alert to notify the on-call clinic staff.
-4. Stay calm. Reassure the patient that help is coming.
-5. Do NOT attempt to diagnose. Do NOT give medical advice beyond "call 911."
+Priorities (in order):
+1. Tell the patient to call 911 or go to the nearest ER immediately. Say it plainly.
+2. Collect: location, main symptoms, whether anyone is with them.
+3. Call trigger_emergency_alert to page on-call staff.
+4. Stay calm. Do not diagnose. Do not give advice beyond "call 911".
 
-Keep the conversation focused and brief. Every second counts."""
+{RESPONSE_STYLE}"""
 
 
 class EmergencyAgent(BaseAgent):
@@ -70,6 +74,11 @@ class EmergencyAgent(BaseAgent):
             return {"action": "end_call", "reason": arguments.get("reason", "")}
 
         if tool_name == "route_to_agent":
+            session.handoff_context = {
+                "from_agent": self.name,
+                "reason": arguments.get("reason", ""),
+                "context": arguments.get("context", {}),
+            }
             return {"status": "routing", "target": arguments.get("agent_name")}
 
         if tool_name == "trigger_emergency_alert":
@@ -104,7 +113,7 @@ class EmergencyAgent(BaseAgent):
                     call_sid=session.call_sid,
                     to=oncall,
                 )
-                return {"status": "alert_sent", "notified": settings.oncall_phone_number}
+                return {"status": "alert_sent", "notified": oncall}
             except Exception as exc:
                 logger.exception("emergency_alert_failed", error=str(exc))
                 return {"status": "error", "message": "Alert failed, please call 911 directly"}

@@ -1,214 +1,305 @@
 // dashboard/src/pages/Patients.tsx
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { PaginatedResponse, Patient } from "@/types";
-import { maskPhone, formatDate } from "@/lib/format";
+import Icon from "@/components/primitives/Icon";
+import { formatDatePretty, initialsFrom, maskPhone } from "@/lib/format";
+
+type View = "grid" | "list";
+
+function loadView(): View {
+  try {
+    const v = localStorage.getItem("medicall_patients_view");
+    if (v === "grid" || v === "list") return v;
+  } catch {
+    // ignore
+  }
+  return "grid";
+}
 
 export default function Patients() {
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
-  const [calling, setCalling] = useState<string | null>(null);
-  const [scheduleFor, setScheduleFor] = useState<Patient | null>(null);
-  const [doctorName, setDoctorName] = useState("");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [notes, setNotes] = useState("");
-  const [scheduling, setScheduling] = useState(false);
-  const [scheduleError, setScheduleError] = useState("");
+  const [view, setView] = useState<View>(loadView);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("medicall_patients_view", view);
+    } catch {
+      // ignore
+    }
+  }, [view]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       api
-        .get<PaginatedResponse<Patient>>("/api/patients", { params: { search } })
-        .then((r) => setPatients(r.data.items));
-    }, 300);
+        .get<PaginatedResponse<Patient>>("/api/patients", { params: { search, page_size: 60 } })
+        .then((r) => {
+          setPatients(r.data.items);
+          setTotal(r.data.total);
+        })
+        .catch(() => {});
+    }, 250);
     return () => clearTimeout(timer);
   }, [search]);
 
-  async function handleCall(p: Patient) {
-    const label = p.name ?? p.phone;
-    if (!window.confirm(`Call ${label} at ${p.phone}?`)) return;
-    setCalling(p.id);
-    try {
-      await api.post("/api/calls/initiate", { to_phone: p.phone });
-    } catch {
-      // silent
-    } finally {
-      setCalling(null);
-    }
-  }
-
-  function openScheduleModal(p: Patient) {
-    setScheduleFor(p);
-    setDoctorName("");
-    setScheduledAt("");
-    setNotes("");
-    setScheduleError("");
-  }
-
-  function closeScheduleModal() {
-    setScheduleFor(null);
-  }
-
-  async function submitSchedule(e: React.FormEvent) {
-    e.preventDefault();
-    if (!scheduleFor) return;
-    if (!doctorName.trim() || !scheduledAt) {
-      setScheduleError("Doctor name and date/time are required.");
-      return;
-    }
-    setScheduling(true);
-    setScheduleError("");
-    try {
-      await api.post("/api/appointments", {
-        patient_id: scheduleFor.id,
-        doctor_name: doctorName.trim(),
-        scheduled_at: new Date(scheduledAt).toISOString(),
-        notes: notes.trim() || null,
-      });
-      closeScheduleModal();
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "Failed to schedule appointment.";
-      setScheduleError(msg);
-    } finally {
-      setScheduling(false);
-    }
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Patients</h1>
-        <button
-          onClick={() => navigate("/patients/add")}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
-        >
-          Add Patient
-        </button>
-      </div>
-
-      <input
-        type="text"
-        placeholder="Search by name or phone..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full max-w-md px-4 py-2 border border-slate-300 rounded"
-      />
-
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
-            <tr>
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Phone</th>
-              <th className="px-4 py-3 text-left">Medical Context</th>
-              <th className="px-4 py-3 text-left">Since</th>
-              <th className="px-4 py-3 text-left"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {patients.map((p) => (
-              <tr key={p.id} className="border-t border-slate-100 hover:bg-slate-50">
-                <td className="px-4 py-3">
-                  <Link to={`/patients/${p.id}`} className="text-blue-600 hover:underline font-medium">
-                    {p.name || "—"}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 font-mono text-sm">{maskPhone(p.phone)}</td>
-                <td className="px-4 py-3 text-xs text-slate-500">
-                  {Object.keys(p.medical_context).length === 0
-                    ? "—"
-                    : Object.keys(p.medical_context).join(", ")}
-                </td>
-                <td className="px-4 py-3 text-sm text-slate-500">{formatDate(p.created_at)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleCall(p)}
-                      disabled={calling === p.id}
-                      className="text-xs text-green-600 hover:text-green-800 font-medium disabled:opacity-50"
-                    >
-                      {calling === p.id ? "Calling..." : "Call"}
-                    </button>
-                    <button
-                      onClick={() => openScheduleModal(p)}
-                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Schedule
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {scheduleFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-1">Schedule Appointment</h2>
-            <p className="text-sm text-slate-500 mb-4">
-              For {scheduleFor.name ?? scheduleFor.phone}
-            </p>
-            <form onSubmit={submitSchedule} className="space-y-4">
-              <div>
-                <label className="block text-xs text-slate-500 uppercase mb-1">Doctor Name *</label>
-                <input
-                  type="text"
-                  placeholder="Dr. Patel"
-                  value={doctorName}
-                  onChange={(e) => setDoctorName(e.target.value)}
-                  required
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 uppercase mb-1">Date &amp; Time *</label>
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  required
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 uppercase mb-1">Notes</label>
-                <textarea
-                  rows={2}
-                  placeholder="Optional notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm resize-none"
-                />
-              </div>
-
-              {scheduleError && <p className="text-red-600 text-sm">{scheduleError}</p>}
-
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={scheduling}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded"
-                >
-                  {scheduling ? "Scheduling..." : "Schedule"}
-                </button>
-                <button
-                  type="button"
-                  onClick={closeScheduleModal}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Patients</h1>
+          <div className="page-sub">
+            {total > 0 ? `${total} patients in system` : `${patients.length} patients`}
           </div>
         </div>
+        <div className="page-actions">
+          <div className="seg" role="group" aria-label="View mode">
+            <button
+              className={view === "grid" ? "active" : ""}
+              onClick={() => setView("grid")}
+              title="Grid view"
+            >
+              <Icon name="layout-grid" size={12} /> Grid
+            </button>
+            <button
+              className={view === "list" ? "active" : ""}
+              onClick={() => setView("list")}
+              title="List view"
+            >
+              <Icon name="list" size={12} /> List
+            </button>
+          </div>
+          <button className="btn btn-primary" onClick={() => navigate("/patients/add")}>
+            <Icon name="user-plus" size={14} /> Add Patient
+          </button>
+        </div>
+      </div>
+
+      <div className="filter-bar" style={{ marginBottom: 16 }}>
+        <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
+          <Icon
+            name="search"
+            size={14}
+            style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--text-tertiary)",
+            }}
+          />
+          <input
+            className="input"
+            placeholder="Search patients..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: 34 }}
+          />
+        </div>
+      </div>
+
+      {patients.length === 0 ? (
+        <div className="empty">
+          <Icon name="users" size={32} style={{ color: "var(--text-tertiary)" }} />
+          <div
+            style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)" }}
+          >
+            No patients found
+          </div>
+          <div>Try a different search or add a new patient.</div>
+        </div>
+      ) : view === "grid" ? (
+        <PatientsGrid patients={patients} onOpen={(p) => navigate(`/patients/${p.id}`)} />
+      ) : (
+        <PatientsList patients={patients} onOpen={(p) => navigate(`/patients/${p.id}`)} />
       )}
+    </div>
+  );
+}
+
+function patientStats(p: Patient) {
+  const ctx = p.medical_context as {
+    allergies?: string[];
+    conditions?: string[];
+    medications?: string[];
+  };
+  return {
+    ctx,
+    allergies: ctx?.allergies?.length ?? 0,
+    conditions: ctx?.conditions?.length ?? 0,
+    medications: ctx?.medications?.length ?? 0,
+  };
+}
+
+/** Schema-agnostic record counter. Sums array lengths and counts any other
+ * non-empty value as 1. Works for whatever shape medical_context evolves into. */
+function recordCount(ctx: Record<string, unknown> | null | undefined): number {
+  if (!ctx) return 0;
+  let total = 0;
+  for (const v of Object.values(ctx)) {
+    if (Array.isArray(v)) total += v.length;
+    else if (v !== null && v !== undefined && v !== "") total += 1;
+  }
+  return total;
+}
+
+function PatientsGrid({
+  patients,
+  onOpen,
+}: {
+  patients: Patient[];
+  onOpen: (p: Patient) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+        gap: 12,
+      }}
+    >
+      {patients.map((p, i) => {
+        const s = patientStats(p);
+        return (
+          <div
+            key={p.id}
+            className="card card-hover"
+            style={{
+              padding: 16,
+              cursor: "pointer",
+              animation: `stagger-up 0.3s var(--ease-out) both`,
+              animationDelay: `${i * 30}ms`,
+            }}
+            onClick={() => onOpen(p)}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <div className="avatar" style={{ width: 40, height: 40, fontSize: 14 }}>
+                {initialsFrom(p.name, "??")}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: "var(--text-md)",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {p.name ?? "Unknown"}
+                </div>
+                <div className="mono" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                  {maskPhone(p.phone)}
+                </div>
+              </div>
+              {s.conditions > 0 && <span className="badge badge-warning">{s.conditions} cond</span>}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "var(--text-xs)",
+                color: "var(--text-secondary)",
+                borderTop: "1px solid var(--border-subtle)",
+                paddingTop: 10,
+              }}
+            >
+              <span>
+                {s.allergies > 0 && "⚠ "}
+                {s.allergies + s.conditions + s.medications} records
+              </span>
+              <span>
+                Since{" "}
+                {new Date(p.created_at).toLocaleDateString(undefined, {
+                  month: "short",
+                  year: "numeric",
+                })}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PatientsList({
+  patients,
+  onOpen,
+}: {
+  patients: Patient[];
+  onOpen: (p: Patient) => void;
+}) {
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <table className="table">
+        <thead>
+          <tr>
+            <th style={{ width: 44 }}></th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Records</th>
+            <th>Patient since</th>
+            <th>Last updated</th>
+            <th>ID</th>
+            <th style={{ width: 40 }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {patients.map((p, i) => {
+            const records = recordCount(p.medical_context);
+            return (
+              <tr
+                key={p.id}
+                onClick={() => onOpen(p)}
+                style={{
+                  animation: "stagger-up 0.25s var(--ease-out) both",
+                  animationDelay: `${i * 18}ms`,
+                }}
+              >
+                <td>
+                  <div className="avatar" style={{ width: 30, height: 30, fontSize: 11 }}>
+                    {initialsFrom(p.name, "??")}
+                  </div>
+                </td>
+                <td style={{ fontWeight: 500 }}>{p.name ?? "Unknown"}</td>
+                <td className="mono" style={{ color: "var(--text-secondary)" }}>
+                  {maskPhone(p.phone)}
+                </td>
+                <td>
+                  {records === 0 ? (
+                    <span style={{ color: "var(--text-tertiary)" }}>—</span>
+                  ) : (
+                    <span className="badge badge-neutral">{records}</span>
+                  )}
+                </td>
+                <td className="mono" style={{ color: "var(--text-secondary)" }}>
+                  {formatDatePretty(p.created_at)}
+                </td>
+                <td className="mono" style={{ color: "var(--text-secondary)" }}>
+                  {formatDatePretty(p.updated_at)}
+                </td>
+                <td
+                  className="mono"
+                  style={{ fontSize: 11, color: "var(--text-tertiary)" }}
+                >
+                  {p.id.slice(0, 8)}
+                </td>
+                <td>
+                  <Icon
+                    name="chevron-right"
+                    size={14}
+                    style={{ color: "var(--text-tertiary)" }}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

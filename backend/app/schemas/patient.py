@@ -16,6 +16,7 @@ class PatientCreate(PatientBase):
 
 
 class PatientUpdate(BaseModel):
+    phone: str | None = None
     name: str | None = None
     medical_context: dict[str, Any] | None = None
 

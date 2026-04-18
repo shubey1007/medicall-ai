@@ -5,7 +5,7 @@ import socketio
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import analytics, appointments, calls, doctors, patients, webhooks
+from app.api import admin, analytics, appointments, calls, doctors, patients, webhooks
 from app.api.auth import router as auth_router
 from app.api.vapi_webhook import router as vapi_router
 from app.api.settings import router as settings_router
@@ -69,6 +69,7 @@ fastapi_app.include_router(doctors.router, dependencies=_api_auth)
 fastapi_app.include_router(appointments.router, dependencies=_api_auth)
 fastapi_app.include_router(analytics.router, dependencies=_api_auth)
 fastapi_app.include_router(settings_router, dependencies=_api_auth)
+fastapi_app.include_router(admin.router, dependencies=_api_auth)
 
 
 @fastapi_app.get("/health")

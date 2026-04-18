@@ -20,6 +20,7 @@ from app.models import TranscriptRole
 from app.services.settings_svc import get_effective
 from app.services.transcript_svc import transcript_service
 from app.utils.logger import get_logger
+from app.utils.prompt_builder import build_clinic_context, build_patient_context
 from app.websocket import dashboard_ws
 from app.websocket.audio_utils import pcm16_to_mulaw, resample_pcm16
 
@@ -46,6 +47,12 @@ class OpenAIRealtimeBridge:
         self._recv_task: asyncio.Task | None = None
         self._closed = False
         self._current_agent: "BaseAgent | None" = None
+        # Agent-swap is staged here by update_session() and applied only
+        # *after* the current turn's function_call_output is delivered.
+        # Sending session.update mid-response produced audible silence
+        # because OAI queued the update and the follow-up response.create
+        # sometimes produced no audio.
+        self._pending_agent: "BaseAgent | None" = None
 
     async def connect(self, initial_agent: "BaseAgent") -> None:
         model = get_effective("openai_realtime_model") or "gpt-4o-realtime-preview"
@@ -66,11 +73,12 @@ class OpenAIRealtimeBridge:
 
     async def configure_session(self, agent: "BaseAgent") -> None:
         self._current_agent = agent
+        instructions = await self._build_instructions(agent)
         await self._send({
             "type": "session.update",
             "session": {
                 "modalities": ["text", "audio"],
-                "instructions": agent.get_system_prompt(),
+                "instructions": instructions,
                 "voice": "alloy",
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
@@ -83,16 +91,69 @@ class OpenAIRealtimeBridge:
                 },
                 "tools": agent.get_tools(),
                 "tool_choice": "auto",
-                "temperature": 0.7,
+                "temperature": 0.6,  # Realtime API minimum is 0.6
             },
         })
         logger.info("oai_session_configured", agent=agent.name, call_sid=self.session.call_sid)
 
+    async def _build_instructions(self, agent: "BaseAgent") -> str:
+        """Compose the system prompt from:
+          1. Clinic context — real doctor roster (so LLM proposes names that
+             actually exist in the DB)
+          2. Patient memory from past calls (Qdrant)
+          3. Handoff context from the previous agent, if any
+          4. The agent's own base prompt
+        """
+        parts: list[str] = []
+
+        try:
+            clinic = await build_clinic_context()
+            if clinic:
+                parts.append(clinic)
+        except Exception as exc:
+            logger.warning(
+                "clinic_context_fetch_failed",
+                call_sid=self.session.call_sid,
+                error=str(exc),
+            )
+
+        try:
+            memory_block = await build_patient_context(self.session.patient_id)
+            if memory_block:
+                parts.append(memory_block)
+        except Exception as exc:
+            # Memory is optional — never fail the call because Qdrant is down.
+            logger.warning(
+                "patient_memory_fetch_failed",
+                call_sid=self.session.call_sid,
+                error=str(exc),
+            )
+
+        handoff = self.session.handoff_context
+        if handoff:
+            from_agent = handoff.get("from_agent", "previous agent")
+            reason = handoff.get("reason", "")
+            ctx = handoff.get("context") or {}
+            parts.append(
+                f"[Handoff from {from_agent}] Reason: {reason}. "
+                f"Collected: {ctx}. Do NOT re-ask the patient what you already know."
+            )
+            # Consume once — don't keep bleeding context after the next configure.
+            self.session.handoff_context = {}
+
+        parts.append(agent.get_system_prompt())
+        return "\n\n".join(parts)
+
     async def update_session(self, agent: "BaseAgent") -> None:
-        """Swap agent mid-call without losing conversation context."""
-        await self.configure_session(agent)
-        # Trigger an immediate response so the new agent greets/acknowledges
-        await self._send({"type": "response.create"})
+        """Stage an agent swap to be applied after the current tool output.
+
+        The bridge's function_call handler applies pending swaps between
+        sending the function_call_output and sending response.create.
+        Applying the swap earlier (mid-response) causes OAI to queue the
+        session.update and the follow-up response.create occasionally
+        produces no audio — the "say hello to wake it up" bug.
+        """
+        self._pending_agent = agent
 
     async def send_audio(self, pcm16_24k: bytes) -> None:
         if self._ws is None or self._closed:
@@ -223,6 +284,17 @@ class OpenAIRealtimeBridge:
                     "output": json.dumps(result),
                 },
             })
+
+            # If the tool triggered a handoff, apply the new agent now —
+            # after the tool output is delivered but before we request the
+            # next response. This guarantees the new instructions/tools are
+            # active when the model generates its first post-handoff turn,
+            # and avoids the "silent until the patient speaks" bug.
+            if self._pending_agent is not None:
+                pending = self._pending_agent
+                self._pending_agent = None
+                await self.configure_session(pending)
+
             await self._send({"type": "response.create"})
 
         elif etype == "error":

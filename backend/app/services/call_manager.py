@@ -26,6 +26,9 @@ class CallSession:
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     finalized: bool = False
     patient_name: str | None = None
+    # Set by route_to_agent tool: the previous agent's reason + structured context.
+    # Consumed once by openai_bridge.configure_session() and cleared after use.
+    handoff_context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
